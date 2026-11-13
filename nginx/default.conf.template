@@ -1,0 +1,39 @@
+# The single-page app, plus /api/ → the calibre content server (same origin: no CORS, and the
+# reader can fetch book files directly).
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location /api/ {
+        proxy_pass ${CALIBRE_API}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_set_header Connection "";
+        # Book files and covers: stream straight through (Range requests, long transfers).
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 10m;
+        proxy_send_timeout 10m;
+        client_max_body_size 1m;
+    }
+
+    # Hashed build output: cache forever.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location = /health { return 200 "ok\n"; }
+
+    # Client-side routes.
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}
