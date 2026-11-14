@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   api, authorPath, authorsLine, bookPath, hasFormat, Q, seriesLabel, seriesPath, shuffle, stripHtml, tagPath, thumbUrl, year,
@@ -46,65 +46,111 @@ async function loadHome(): Promise<HomeData> {
   return { featured, reading, recent, series, tagShelves, audiobooks, random: random.slice(0, 24) };
 }
 
+const ROTATE_MS = 9000;
+const PAUSE_AFTER_TOUCH_MS = 20000;
+
+/** The featured books: a horizontal snap scroller (swipe, trackpad, the dots or the arrows), which
+ * also advances on its own until the user takes over. */
 function Hero({ items }: { items: Book[] }) {
+  const track = useRef<HTMLDivElement>(null);
   const [i, setI] = useState(0);
+  const pausedUntil = useRef(0);
+
+  const go = (n: number, smooth = true) => {
+    const el = track.current;
+    if (!el || !items.length) return;
+    const idx = ((n % items.length) + items.length) % items.length;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: smooth ? "smooth" : "auto" });
+  };
+  const userTouched = () => void (pausedUntil.current = Date.now() + PAUSE_AFTER_TOUCH_MS);
+
+  // The current slide follows the scroll position (one slide per viewport width).
+  useEffect(() => {
+    const el = track.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setI(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [items.length]);
+
   useEffect(() => {
     if (items.length < 2) return;
-    const t = setInterval(() => setI((x) => (x + 1) % items.length), 9000);
+    const t = setInterval(() => {
+      if (Date.now() < pausedUntil.current || document.hidden) return;
+      const el = track.current;
+      if (!el) return;
+      go(Math.round(el.scrollLeft / Math.max(1, el.clientWidth)) + 1);
+    }, ROTATE_MS);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
+
   if (!items.length) return <div className="hero hero-empty" />;
-  const b = items[i];
-  const id = b.application_id;
-  const y = year(b.pubdate);
   return (
     <section className="hero">
-      {items.map((x, n) => (
-        <div
-          key={x.application_id}
-          className={`hero-bg ${n === i ? "active" : ""}`}
-          style={{ backgroundImage: `url("${thumbUrl(x.application_id, 600, 900)}")` }}
-        />
-      ))}
-      <div className="hero-shade" />
-      <div className="hero-content" key={id}>
-        <div className="hero-text">
-          <h1>{b.title}</h1>
-          <div className="meta-line">
-            <span>
-              {b.authors.map((a, n) => (
-                <span key={a}>
-                  {n > 0 && ", "}
-                  <Link to={authorPath(a)}>{a}</Link>
-                </span>
-              ))}
-            </span>
-            {y && <span>{y}</span>}
-            {b.series && <Link to={seriesPath(b.series)}>{seriesLabel(b)}</Link>}
-            <Stars n={b.rating} />
+      <div className="hero-track" ref={track} onPointerDown={userTouched} onTouchStart={userTouched} onWheel={userTouched}>
+        {items.map((b) => {
+          const id = b.application_id;
+          const y = year(b.pubdate);
+          return (
+            <article className="hero-slide" key={id}>
+              <div className="hero-bg" style={{ backgroundImage: `url("${thumbUrl(id, 600, 900)}")` }} />
+              <div className="hero-shade" />
+              <div className="hero-content">
+                <div className="hero-text">
+                  <h1>{b.title}</h1>
+                  <div className="meta-line">
+                    <span>
+                      {b.authors.map((a, n) => (
+                        <span key={a}>
+                          {n > 0 && ", "}
+                          <Link to={authorPath(a)}>{a}</Link>
+                        </span>
+                      ))}
+                    </span>
+                    {y && <span>{y}</span>}
+                    {b.series && <Link to={seriesPath(b.series)}>{seriesLabel(b)}</Link>}
+                    <Stars n={b.rating} />
+                  </div>
+                  {b.tags.length > 0 && (
+                    <div className="genres">
+                      {b.tags.slice(0, 4).map((t) => <Link key={t} to={tagPath(t)}>{t}</Link>)}
+                    </div>
+                  )}
+                  <p className="hero-overview">{stripHtml(b.comments)}</p>
+                  <div className="actions">
+                    {hasFormat(b, "epub") && <Link className="btn btn-primary" to={`/read/${id}`}>Read</Link>}
+                    <Link className="btn" to={bookPath(b)}>Details</Link>
+                  </div>
+                </div>
+                <Link to={bookPath(b)} className="hero-cover">
+                  <div className="art poster">
+                    <img src={thumbUrl(id, 600, 900)} alt={b.title} className="loaded" loading="lazy" />
+                  </div>
+                </Link>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {items.length > 1 && (
+        <div className="hero-nav">
+          <button className="hero-arrow" onClick={() => { userTouched(); go(i - 1); }} aria-label="Previous">‹</button>
+          <div className="hero-dots">
+            {items.map((x, n) => (
+              <button key={x.application_id} className={n === i ? "active" : ""} onClick={() => { userTouched(); go(n); }} aria-label={x.title} />
+            ))}
           </div>
-          {b.tags.length > 0 && (
-            <div className="genres">
-              {b.tags.slice(0, 4).map((t) => <Link key={t} to={tagPath(t)}>{t}</Link>)}
-            </div>
-          )}
-          <p className="hero-overview">{stripHtml(b.comments)}</p>
-          <div className="actions">
-            {hasFormat(b, "epub") && <Link className="btn btn-primary" to={`/read/${id}`}>Read</Link>}
-            <Link className="btn" to={bookPath(b)}>Details</Link>
-          </div>
+          <button className="hero-arrow" onClick={() => { userTouched(); go(i + 1); }} aria-label="Next">›</button>
         </div>
-        <Link to={bookPath(b)} className="hero-cover">
-          <div className="art poster">
-            <img src={thumbUrl(id, 600, 900)} alt={b.title} className="loaded" />
-          </div>
-        </Link>
-      </div>
-      <div className="hero-dots">
-        {items.map((x, n) => (
-          <button key={x.application_id} className={n === i ? "active" : ""} onClick={() => setI(n)} aria-label={x.title} />
-        ))}
-      </div>
+      )}
     </section>
   );
 }
