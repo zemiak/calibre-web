@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   api, authorPath, coverUrl, fileUrl, formatDate, formatIndex, formatSize, hasFormat, identifierUrl, isFinished, languageName,
@@ -45,7 +45,13 @@ export function Detail() {
 function Header({ b }: { b: Book }) {
   const id = b.application_id;
   const html = useMemo(() => (b.comments ? sanitizeHtml(b.comments) : ""), [b.comments]);
-  const p = progress.get(id);
+  const [mark, setMark] = useState(() => progress.get(id));
+  const p = mark;
+  const done = isFinished(b) || mark?.finished;
+  const toggleFinished = () => {
+    progress.setFinished(id, !mark?.finished, { title: b.title, authors: b.authors });
+    setMark(progress.get(id));
+  };
   const y = year(b.pubdate);
   const audio = b.formats.find((f) => f === "mp3" || f === "m4b" || f === "m4a");
   return (
@@ -76,7 +82,7 @@ function Header({ b }: { b: Book }) {
           {b.languages.length > 0 && <span>{b.languages.map(languageName).join(", ")}</span>}
           {b.pages ? <span>{b.pages} pages</span> : null}
           <Stars n={b.rating} />
-          {isFinished(b) && <span className="cert">Finished</span>}
+          {done && <span className="cert">Finished</span>}
         </div>
         {b.formats.length > 0 && (
           <div className="badges">
@@ -96,6 +102,10 @@ function Header({ b }: { b: Book }) {
               {p && p.pct > 0 && p.pct < 100 ? `Continue Reading · ${Math.round(p.pct)}%` : "Read"}
             </Link>
           )}
+          <button className={`btn icon ${mark?.finished ? "on" : ""}`} onClick={toggleFinished}
+            title={mark?.finished ? "Mark as not finished" : "Mark as finished"} aria-pressed={!!mark?.finished}>
+            ✓
+          </button>
           {hasFormat(b, "pdf") && (
             <a className="btn" href={fileUrl(id, "pdf", true)} target="_blank" rel="noreferrer">Open PDF</a>
           )}
@@ -107,7 +117,7 @@ function Header({ b }: { b: Book }) {
             </a>
           ))}
         </div>
-        {p && p.pct > 0 && p.pct < 100 && (
+        {p && p.pct > 0 && p.pct < 100 && !mark?.finished && (
           <div className="resume-bar">
             <div className="progress"><div style={{ width: `${p.pct}%` }} /></div>
             <span>{Math.round(p.pct)}% read</span>

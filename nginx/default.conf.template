@@ -1,5 +1,5 @@
-# The single-page app, plus /api/ → the calibre content server (same origin: no CORS, and the
-# reader can fetch book files directly).
+# The single-page app, /api/ → the calibre content server (same origin: no CORS, and the reader can
+# fetch book files directly), /state/ → the per-user reading state service in the same pod.
 server {
     listen 80;
     server_name _;
@@ -21,6 +21,15 @@ server {
         proxy_read_timeout 10m;
         proxy_send_timeout 10m;
         client_max_body_size 1m;
+    }
+
+    # Reading state (server/state.mjs). The sign-in proxy's X-Forwarded-Email header passes
+    # through untouched; it is what identifies the user.
+    location /state/ {
+        proxy_pass http://127.0.0.1:${STATE_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64k;
     }
 
     # Hashed build output: cache forever.

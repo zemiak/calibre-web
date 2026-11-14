@@ -3,3 +3,4 @@ dist/
 .devbox/
 .DS_Store
 *.local
+.state/

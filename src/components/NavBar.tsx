@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { progress } from "../progress";
 
 export function NavBar() {
   const [scrolled, setScrolled] = useState(false);
@@ -51,6 +52,11 @@ export function NavBar() {
           onFocus={() => !loc.pathname.startsWith("/search") && q === "" && nav("/search")}
         />
       </label>
+      {progress.user && (
+        <span className="user-chip" title={`Signed in as ${progress.user}: reading marks are yours`} aria-label={`Signed in as ${progress.user}`}>
+          {progress.user[0].toUpperCase()}
+        </span>
+      )}
     </nav>
   );
 }

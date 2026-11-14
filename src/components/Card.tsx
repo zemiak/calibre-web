@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, authorsLine, bookPath, isAudiobook, isFinished, Q, seriesPath, thumbUrl, type Book, type CategoryItem } from "../api";
 import { useInView } from "../hooks";
@@ -15,21 +15,70 @@ export function Stars({ n, className }: { n: number; className?: string }) {
   );
 }
 
-/** A cover card: progress bar when the book is being read, a tick when it's marked finished. */
+const LONG_PRESS_MS = 600;
+const MOVE_TOLERANCE = 10;
+
+/** A cover card: progress bar when the book is being read, a tick when it's finished (calibre's
+ * column or the user's own mark). A long press on the cover toggles the user's mark. */
 export function BookCard({ book, sub }: { book: Book; sub?: string }) {
   const id = book.application_id;
-  const p = progress.get(id);
+  const [mark, setMark] = useState(() => progress.get(id));
+  const [toast, setToast] = useState<string>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const start = useRef<{ x: number; y: number }>(undefined);
+  const fired = useRef(false);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const cancel = () => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+  };
+  const onPointerDown = (e: RPointerEvent) => {
+    if (e.button !== 0) return;
+    fired.current = false;
+    start.current = { x: e.clientX, y: e.clientY };
+    cancel();
+    timer.current = setTimeout(() => {
+      fired.current = true;
+      const next = !progress.get(id)?.finished;
+      progress.setFinished(id, next, { title: book.title, authors: book.authors });
+      setMark(progress.get(id));
+      setToast(next ? "Finished" : "Not finished");
+      navigator.vibrate?.(30);
+      setTimeout(() => setToast(undefined), 1300);
+    }, LONG_PRESS_MS);
+  };
+  const onPointerMove = (e: RPointerEvent) => {
+    const s = start.current;
+    if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MOVE_TOLERANCE) cancel();
+  };
+
+  const done = isFinished(book) || mark?.finished;
   return (
-    <Link to={bookPath(book)} className="card poster-card">
+    <Link
+      to={bookPath(book)}
+      className="card poster-card"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={cancel}
+      onPointerCancel={cancel}
+      onPointerLeave={cancel}
+      // After a long press the release must not open the book (nor show the image menu on touch).
+      onClick={(e) => fired.current && e.preventDefault()}
+      onContextMenu={(e) => (timer.current || fired.current) && e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+    >
       <div className="art poster">
         <Img src={thumbUrl(id)} alt={book.title} fallback={book.title} />
-        {isFinished(book) && <span className="badge-done" title="Finished">✓</span>}
+        {done && <span className="badge-done" title="Finished">✓</span>}
         {isAudiobook(book) && <span className="badge-audio" title="Audiobook">♪</span>}
-        {p && p.pct > 0 && p.pct < 100 && (
+        {mark && mark.pct > 0 && mark.pct < 100 && !done && (
           <div className="progress">
-            <div style={{ width: `${p.pct}%` }} />
+            <div style={{ width: `${mark.pct}%` }} />
           </div>
         )}
+        {toast && <span className="card-toast">{toast}</span>}
       </div>
       <div className="card-title">{book.title}</div>
       <div className="card-sub">{sub ?? authorsLine(book)}</div>
