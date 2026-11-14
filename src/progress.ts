@@ -46,7 +46,21 @@ function writeLocal(key: string, value: unknown) {
 
 // ------------------------------------------------------------------ the store
 
+export interface Profile {
+  name?: string; givenName?: string; familyName?: string; picture?: string; locale?: string; domain?: string;
+  emailVerified?: boolean; subject?: string; issuer?: string; user?: string; preferredUsername?: string; groups?: string[];
+}
+export interface Activity { firstSeen?: number; lastSeen?: number; sessionStart?: number; previousSession?: number; sessions?: number }
+export interface Account {
+  user: string;
+  profile: Profile | null;
+  activity: Activity;
+  downloads: { count: number; recent: { id: number; fmt: string; at: number; title?: string }[] };
+}
+type Me = Account & { books: Record<string, Omit<Progress, "id">> };
+
 let user: string | null = null;
+let account: Account | null = null;
 let remote = false;
 const books = new Map<number, Progress>();
 
@@ -72,9 +86,10 @@ export const stateLoaded: Promise<void> = fetch("/state/me", { redirect: "manual
       return;
     }
     if (!r.ok) return loadLocal();
-    const s = (await r.json()) as { user: string | null; books: Record<string, Omit<Progress, "id">> };
+    const s = (await r.json()) as Me;
     if (!s.user) return loadLocal();
     user = s.user;
+    account = { user: s.user, profile: s.profile, activity: s.activity ?? {}, downloads: s.downloads ?? { count: 0, recent: [] } };
     remote = true;
     for (const [id, m] of Object.entries(s.books ?? {})) {
       books.set(Number(id), { id: Number(id), title: m.title ?? "", authors: m.authors ?? [], pct: m.pct ?? 0, at: m.at ?? 0, cfi: m.cfi, finished: m.finished });
@@ -121,6 +136,21 @@ export const progress = {
   /** The signed-in user's email, or null when the marks are kept only in this browser. */
   get user() {
     return user;
+  },
+
+  /** Profile, sessions and downloads (null without a sign-in). */
+  get account() {
+    return account;
+  },
+
+  /** The account data again from the server (the user page). */
+  async refreshAccount(): Promise<Account | null> {
+    if (!remote) return null;
+    const r = await fetch("/state/me", { cache: "no-store", redirect: "manual" });
+    if (!r.ok) return account;
+    const s = (await r.json()) as Me;
+    account = { user: s.user, profile: s.profile, activity: s.activity ?? {}, downloads: s.downloads ?? { count: 0, recent: [] } };
+    return account;
   },
 
   get: (id: number) => books.get(id),

@@ -202,6 +202,17 @@ export const Q = {
   },
 };
 
+/** The library's own split: comics and magazines have their own pages; everything else is "books"
+ * (the home screen shows only those). */
+export const COMICS = Q.eq("tags", "komix");
+export const MAGAZINES = Q.eq("tags", "magazine");
+export const BOOKS_ONLY = Q.and(`not ${COMICS}`, `not ${MAGAZINES}`);
+const AUDIO_FORMATS = ["mp3", "m4b", "m4a"];
+/** Books to read: no comics, magazines or audiobooks. */
+export const TEXT_BOOKS = Q.and(BOOKS_ONLY, ...AUDIO_FORMATS.map((f) => `not formats:${f}`));
+/** Audiobooks: any book with an audio file (comics and magazines aside). */
+export const AUDIOBOOKS = Q.and(BOOKS_ONLY, Q.or(...AUDIO_FORMATS.map((f) => `formats:${f}`)));
+
 // ------------------------------------------------------------------ URLs
 
 /** A cover scaled to fit w×h (calibre keeps the aspect ratio). */
@@ -210,6 +221,10 @@ export const coverUrl = (id: number) => `${API}/get/cover/${id}/${lib}`;
 /** The book file; `inline` makes the browser show it (PDF viewer, audio) instead of saving it. */
 export const fileUrl = (id: number, fmt: string, inline = false) =>
   `${API}/get/${fmt}/${id}/${lib}` + (inline ? "?content_disposition=inline" : "");
+/** A download link: through the state service, which counts it for the signed-in user and redirects
+ * to the file. */
+export const downloadUrl = (id: number, fmt: string, title?: string) =>
+  `/state/download?to=${encodeURIComponent(fileUrl(id, fmt))}` + (title ? `&title=${encodeURIComponent(title)}` : "");
 
 // ------------------------------------------------------------------ formatting
 

@@ -36,6 +36,8 @@ export function NavBar() {
       <div className="nav-links">
         <NavLink to="/" end>Home</NavLink>
         <NavLink to="/books">Library</NavLink>
+        <NavLink to="/comics">Comics</NavLink>
+        <NavLink to="/magazines">Magazines</NavLink>
         <NavLink to="/authors">Authors</NavLink>
         <NavLink to="/series">Series</NavLink>
         <NavLink to="/tags">Tags</NavLink>
@@ -52,11 +54,15 @@ export function NavBar() {
           onFocus={() => !loc.pathname.startsWith("/search") && q === "" && nav("/search")}
         />
       </label>
-      {progress.user && (
-        <span className="user-chip" title={`Signed in as ${progress.user}: reading marks are yours`} aria-label={`Signed in as ${progress.user}`}>
-          {progress.user[0].toUpperCase()}
-        </span>
-      )}
+      <NavLink to="/me" className="user-chip" title={progress.user ? `Signed in as ${progress.user}` : "Account and statistics"} aria-label="Account">
+        {progress.account?.profile?.picture ? (
+          <img src={progress.account.profile.picture} alt="" referrerPolicy="no-referrer" />
+        ) : progress.user ? (
+          progress.user[0].toUpperCase()
+        ) : (
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" /></svg>
+        )}
+      </NavLink>
     </nav>
   );
 }

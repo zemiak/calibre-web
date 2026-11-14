@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  api, authorPath, authorsLine, bookPath, hasFormat, Q, seriesLabel, seriesPath, shuffle, stripHtml, tagPath, thumbUrl, year,
+  api, authorPath, authorsLine, BOOKS_ONLY, bookPath, formatDate, TEXT_BOOKS, hasFormat, Q, seriesLabel, seriesPath, shuffle, stripHtml, tagPath, thumbUrl, year,
   type Book, type CategoryItem,
 } from "../api";
 import { BookCard, SeriesCard, Stars } from "../components/Card";
@@ -12,6 +12,8 @@ import { progress } from "../progress";
 
 interface HomeData {
   featured: Book[];
+  unread: Book[];
+  newest: Book[];
   reading: Book[];
   recent: Book[];
   series: CategoryItem[];
@@ -20,30 +22,54 @@ interface HomeData {
   random: Book[];
 }
 
+const newSub = (b: Book) => [formatDate(b.pubdate), b.authors.join(", ")].filter(Boolean).join(" · ");
+
+/** Home shows books only: comics and magazines have their own pages in the nav bar. */
+const only = (q?: string) => Q.and(BOOKS_ONLY, q);
+
 async function loadHome(): Promise<HomeData> {
   // Every book id, newest first: the shelves below are slices of it (there's no random sort server-side).
-  const all = await api.search("", { num: 100000, sort: "timestamp", order: "desc" });
+  const all = await api.search(only(), { num: 100000, sort: "timestamp", order: "desc" });
   const ids = all.book_ids;
   const randomIds = shuffle(ids.slice(24)).slice(0, 48);
-  const [recent, random, tags, series, reading, audiobooks] = await Promise.all([
+  // Unread (no audiobooks): neither marked finished by this user nor in calibre's own "Finished" column; newest first.
+  const notInCalibre = await api.search(Q.and(TEXT_BOOKS, "not #finished:true"), { num: 100000, sort: "timestamp", order: "desc" })
+    .then((r) => r.book_ids)
+    .catch(() => api.search(TEXT_BOOKS, { num: 100000, sort: "timestamp", order: "desc" }).then((r) => r.book_ids)); // a library without that column
+  const unreadIds = notInCalibre.filter((id) => !progress.get(id)?.finished).slice(0, 30);
+  const [unread, newest, recent, random, tags, seriesCandidates, reading, audiobooks] = await Promise.all([
+    api.books(unreadIds),
+    // New: by publication date, books to read only (no audiobooks either).
+    api.list(TEXT_BOOKS, { num: 24, sort: "pubdate", order: "desc" }).then((r) => r.items),
     api.books(ids.slice(0, 24)),
     api.books(randomIds),
     api.category("tags", { sort: "popularity" }),
-    api.category("series", { sort: "popularity", num: 14 }),
+    api.category("series", { sort: "popularity", num: 40 }),
     api.books(progress.list().slice(0, 20).map((p) => p.id)),
-    api.list(Q.has("formats", "mp3"), { num: 24, sort: "timestamp", order: "desc" }).then((r) => r.items),
+    api.list(only(Q.has("formats", "mp3")), { num: 24, sort: "timestamp", order: "desc" }).then((r) => r.items),
   ]);
   // The hero: random books that have a description; filled up with others if there are too few.
   const withText = random.filter((b) => stripHtml(b.comments).length > 80);
   const featured = [...withText, ...random.filter((b) => !withText.includes(b))].slice(0, 6);
-  const topTags = tags.filter((t) => t.count >= 8).slice(0, 4);
-  const tagShelves = await Promise.all(
-    topTags.map(async (t) => ({
-      tag: t.name,
-      items: (await api.list(Q.eq("tags", t.name), { num: 24, sort: "timestamp", order: "desc" })).items,
-    })),
-  );
-  return { featured, reading, recent, series, tagShelves, audiobooks, random: random.slice(0, 24) };
+  // Series and tag shelves: only those that still have books once comics and magazines are left out.
+  const series = (
+    await Promise.all(
+      seriesCandidates.map(async (s) => {
+        const n = (await api.search(only(Q.eq("series", s.name)), { num: 1 })).total_num;
+        return n ? { ...s, count: n } : undefined;
+      }),
+    )
+  ).filter((s): s is CategoryItem => !!s).slice(0, 14);
+  const candidates = tags.filter((t) => t.count >= 8 && t.name !== "komix" && t.name !== "magazine").slice(0, 10);
+  const tagShelves = (
+    await Promise.all(
+      candidates.map(async (t) => ({
+        tag: t.name,
+        items: (await api.list(only(Q.eq("tags", t.name)), { num: 24, sort: "timestamp", order: "desc" })).items,
+      })),
+    )
+  ).filter((s) => s.items.length >= 4).slice(0, 4);
+  return { featured, unread, newest, reading, recent, series, tagShelves, audiobooks, random: random.slice(0, 24) };
 }
 
 const ROTATE_MS = 9000;
@@ -102,6 +128,7 @@ function Hero({ items }: { items: Book[] }) {
           return (
             <article className="hero-slide" key={id}>
               <div className="hero-bg" style={{ backgroundImage: `url("${thumbUrl(id, 600, 900)}")` }} />
+              <Link to={bookPath(b)} className="hero-art" style={{ backgroundImage: `url("${thumbUrl(id, 1000, 1500)}")` }} aria-label={b.title} />
               <div className="hero-shade" />
               <div className="hero-content">
                 <div className="hero-text">
@@ -130,11 +157,6 @@ function Hero({ items }: { items: Book[] }) {
                     <Link className="btn" to={bookPath(b)}>Details</Link>
                   </div>
                 </div>
-                <Link to={bookPath(b)} className="hero-cover">
-                  <div className="art poster">
-                    <img src={thumbUrl(id, 600, 900)} alt={b.title} className="loaded" loading="lazy" />
-                  </div>
-                </Link>
               </div>
             </article>
           );
@@ -165,6 +187,16 @@ export function Home() {
     <div className="home">
       <Hero items={data.featured} />
       <div className="shelves">
+        {data.unread.length > 0 && (
+          <Shelf title="Unread" more="/unread">
+            {data.unread.map((b) => <BookCard key={b.application_id} book={b} />)}
+          </Shelf>
+        )}
+        {data.newest.length > 0 && (
+          <Shelf title="New" more="/new">
+            {data.newest.map((b) => <BookCard key={b.application_id} book={b} sub={newSub(b)} />)}
+          </Shelf>
+        )}
         {data.reading.length > 0 && (
           <Shelf title="Continue Reading">
             {data.reading.map((b) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  api, authorPath, coverUrl, fileUrl, formatDate, formatIndex, formatSize, hasFormat, identifierUrl, isFinished, languageName,
+  api, authorPath, coverUrl, downloadUrl, fileUrl, formatDate, formatIndex, formatSize, hasFormat, identifierUrl, isFinished, languageName,
   Q, seriesPath, tagPath, thumbUrl, year, type Book,
 } from "../api";
 import { BookCard, Stars } from "../components/Card";
@@ -110,7 +110,7 @@ function Header({ b }: { b: Book }) {
             <a className="btn" href={fileUrl(id, "pdf", true)} target="_blank" rel="noreferrer">Open PDF</a>
           )}
           {b.formats.map((f) => (
-            <a key={f} className="btn" href={fileUrl(id, f)} title={`Download ${f.toUpperCase()}`} download>
+            <a key={f} className="btn" href={downloadUrl(id, f, b.title)} title={`Download ${f.toUpperCase()}`} download>
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM4 19h16v2H4v-2Z" /></svg>
               {f.toUpperCase()}
               {b.format_metadata[f] && <span className="muted small">{formatSize(b.format_metadata[f].size)}</span>}

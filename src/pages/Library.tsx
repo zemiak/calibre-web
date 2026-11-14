@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, formatIndex, Q, type Book, type Order, type SortKey } from "../api";
+import { api, BOOKS_ONLY, COMICS, formatDate, formatIndex, MAGAZINES, Q, TEXT_BOOKS, type Book, type Order, type SortKey } from "../api";
 import { BookCard } from "../components/Card";
 import { ErrorState, Spinner } from "../components/States";
 import { useAsync, useDocumentTitle, useInView } from "../hooks";
@@ -163,8 +163,26 @@ export function LibraryGrid({ title, base, defaultSort = "title", sub, intro }: 
 }
 
 export function Library() {
-  return <LibraryGrid title="Library" />;
+  return <LibraryGrid title="Library" base={BOOKS_ONLY} intro={<p className="intro muted">Books · comics and magazines have their own pages</p>} />;
 }
+
+export function NewBooks() {
+  return (
+    <LibraryGrid key="new" title="New" base={TEXT_BOOKS} defaultSort="pubdate"
+      sub={(b) => [formatDate(b.pubdate), b.authors.join(", ")].filter(Boolean).join(" · ")}
+      intro={<p className="intro muted">Newest published first · no audiobooks, comics or magazines</p>} />
+  );
+}
+
+export function Comics() {
+  return <LibraryGrid key="comics" title="Comics" base={COMICS} defaultSort="series" sub={seriesSub} />;
+}
+
+export function Magazines() {
+  return <LibraryGrid key="magazines" title="Magazines" base={MAGAZINES} defaultSort="series" sub={seriesSub} />;
+}
+
+const seriesSub = (b: Book) => (b.series ? `${b.series} #${formatIndex(b.series_index)}` : undefined);
 
 export function TagPage() {
   const { name = "" } = useParams();
