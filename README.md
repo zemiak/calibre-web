@@ -17,8 +17,8 @@ inline EPUB reader.
   custom columns such as *Finished* are shown too).
 - **Reader**: EPUBs open inline ([epub.js](https://github.com/futurepress/epub.js)), paginated, with a
   table of contents, a progress slider, three themes (dark, sepia, light) and adjustable text size.
-- **Reading marks**: the position in each book and a *Finished* mark: a toggle on the book page, or a
-  long press on any cover (a tick on covers, next to calibre's own *Finished* column). Behind the sign-in proxy they belong
+- **Reading marks**: the position in each book and a *Finished* toggle on the book page (shown as a tick
+  on covers, next to calibre's own *Finished* column). Behind the sign-in proxy they belong
   to the signed-in user and are kept on the server, so they follow the user across devices; without
   a sign-in they stay in the browser. They feed *Continue Reading* on the home page.
 - **Search**: every word must appear in the title, authors, series, tags, description or publisher
