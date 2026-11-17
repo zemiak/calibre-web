@@ -1,6 +1,6 @@
 # The single-page app; /covers/ and /files/ straight from the calibre library folder (LIBRARY_DIR,
 # mounted read-only); /state/ → the state service in the same pod (the library's metadata, reading
-# state, downloads); /api/ → the calibre content server (kept for anything still pointing at it).
+# state, downloads). No calibre-server is needed.
 
 # Scaled covers, kept for a year (the URLs carry the book's version, so they never go stale).
 proxy_cache_path /var/cache/nginx/covers levels=1:2 keys_zone=covers:10m max_size=2g inactive=365d use_temp_path=off;
@@ -66,17 +66,6 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         client_max_body_size 64k;
-    }
-
-    location /api/ {
-        proxy_pass ${CALIBRE_API}/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_read_timeout 10m;
     }
 
     # Hashed build output: cache forever.

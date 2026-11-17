@@ -72,7 +72,6 @@ library folder at `LIBRARY_DIR` (read-only is enough). Environment:
 | Variable | Default | |
 |---|---|---|
 | `LIBRARY_DIR` | `/library` | the calibre library folder, with `metadata.db` (both containers) |
-| `CALIBRE_API` | `http://calibre:8080` | a calibre-server that `/api/` still proxies to (unused by the app) |
 | `STATE_PORT` | `8081` | where nginx finds the state service (both containers) |
 | `STATE_DIR` | `/data` | the state service's files, one per user |
 

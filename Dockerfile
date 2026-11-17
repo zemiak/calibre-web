@@ -12,8 +12,7 @@ RUN npm run build
 FROM nginx:1.28-alpine AS runtime
 RUN apk add --no-cache nodejs \
  && sed -i '1i load_module modules/ngx_http_image_filter_module.so;' /etc/nginx/nginx.conf
-ENV CALIBRE_API=http://calibre:8080 \
-    LIBRARY_DIR=/library \
+ENV LIBRARY_DIR=/library \
     STATE_PORT=8081 \
     STATE_DIR=/data
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
