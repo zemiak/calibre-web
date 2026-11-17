@@ -146,7 +146,9 @@ export function startLibrary() {
   setInterval(async () => {
     try {
       const { mtimeMs } = await stat(DB);
-      if (!current || mtimeMs === current.mtimeMs) return;
+      // Not loaded yet (no metadata.db at start, or unreadable): try again now that it's there.
+      if (!current) return await load("appeared");
+      if (mtimeMs === current.mtimeMs) return;
       // Wait until calibre is done writing: the same mtime on two polls in a row.
       if (lastSeen !== mtimeMs) {
         lastSeen = mtimeMs;
@@ -154,7 +156,8 @@ export function startLibrary() {
       }
       await load("changed");
     } catch (e) {
-      console.error(new Date().toISOString(), "library: reload failed:", e.message);
+      // A missing file is already reported at start; don't repeat it every poll.
+      if (e.code !== "ENOENT") console.error(new Date().toISOString(), "library: reload failed:", e.message);
     }
   }, POLL_MS).unref();
 }
