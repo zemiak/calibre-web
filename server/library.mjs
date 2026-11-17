@@ -15,6 +15,8 @@ import { gzipSync } from "node:zlib";
 const DIR = process.env.LIBRARY_DIR ?? "/library";
 const DB = join(DIR, "metadata.db");
 const POLL_MS = Number(process.env.LIBRARY_POLL_MS ?? 15000);
+/** Besides watching the file, re-read it once a night anyway, at this hour (UTC). */
+const NIGHTLY_HOUR_UTC = Number(process.env.LIBRARY_NIGHTLY_HOUR_UTC ?? 2);
 
 /** calibre's "2026-11-10 07:41:35.840021+00:00" as ISO 8601; its "no date" (year 101) stays as is. */
 const iso = (s) => (s ? String(s).replace(" ", "T").replace(/\.\d+(?=[+-]\d\d:\d\d$)/, "") : null);
@@ -113,7 +115,11 @@ function read() {
   }
 }
 
-/** @type {{ json: Buffer, gzip: Buffer, etag: string, count: number, loadedAt: number, mtimeMs: number } | undefined} */
+/** What identifies one version of the file: a sync (rsync writes a new file and renames it into
+ * place, keeping the source's mtime) changes the inode and usually the size, calibre the mtime. */
+const signature = (st) => `${st.mtimeMs}:${st.size}:${st.ino}`;
+
+/** @type {{ json: Buffer, gzip: Buffer, etag: string, count: number, loadedAt: number, signature: string } | undefined} */
 let current;
 let loading;
 
@@ -131,35 +137,59 @@ async function load(reason) {
       await new Promise((r) => setTimeout(r, 500 * attempt));
     }
   }
-  const json = Buffer.from(JSON.stringify({ library: "books", loadedAt: new Date().toISOString(), books }));
-  const etag = `"${createHash("sha1").update(json).digest("base64url").slice(0, 20)}"`;
-  current = { json, gzip: gzipSync(json, { level: 9 }), etag, count: books.length, loadedAt: Date.now(), mtimeMs: st.mtimeMs };
-  console.log(`${new Date().toISOString()} library (${reason}): ${books.length} books, ${Math.round(json.length / 1024)} kB (${Math.round(current.gzip.length / 1024)} kB gzipped), ${Date.now() - t0} ms`);
+  // The ETag comes from the books only, so a reload of an unchanged library keeps it (clients get 304s).
+  const body = JSON.stringify(books);
+  const etag = `"${createHash("sha1").update(body).digest("base64url").slice(0, 20)}"`;
+  const unchanged = current?.etag === etag;
+  const json = Buffer.from(`{"library":"books","version":${etag},"books":${body}}`);
+  current = { json, gzip: gzipSync(json, { level: 9 }), etag, count: books.length, loadedAt: Date.now(), signature: signature(st) };
+  console.log(`${new Date().toISOString()} library (${reason}): ${books.length} books, ${Math.round(json.length / 1024)} kB (${Math.round(current.gzip.length / 1024)} kB gzipped), ${Date.now() - t0} ms${unchanged ? ", no changes" : ""}`);
 }
 
-/** Loads once, then watches metadata.db's modification time. */
+/** Loads once, then watches metadata.db (every POLL_MS) and re-reads it every night regardless. */
 export function startLibrary() {
   loading = load("start").catch((e) => {
     console.error(new Date().toISOString(), "library: can't read", DB, e.message);
   });
   let lastSeen;
+  let busy = false;
   setInterval(async () => {
+    if (busy) return;
+    busy = true;
     try {
-      const { mtimeMs } = await stat(DB);
+      const sig = signature(await stat(DB));
       // Not loaded yet (no metadata.db at start, or unreadable): try again now that it's there.
       if (!current) return await load("appeared");
-      if (mtimeMs === current.mtimeMs) return;
-      // Wait until calibre is done writing: the same mtime on two polls in a row.
-      if (lastSeen !== mtimeMs) {
-        lastSeen = mtimeMs;
+      if (sig === current.signature) return;
+      // Wait until the writer is done: the same signature on two polls in a row.
+      if (lastSeen !== sig) {
+        lastSeen = sig;
         return;
       }
       await load("changed");
     } catch (e) {
       // A missing file is already reported at start; don't repeat it every poll.
       if (e.code !== "ENOENT") console.error(new Date().toISOString(), "library: reload failed:", e.message);
+    } finally {
+      busy = false;
     }
   }, POLL_MS).unref();
+
+  // The nightly re-read: a safety net for changes the file's metadata didn't show.
+  const scheduleNightly = () => {
+    const next = new Date();
+    next.setUTCHours(NIGHTLY_HOUR_UTC, 0, 0, 0);
+    if (next.getTime() <= Date.now()) next.setUTCDate(next.getUTCDate() + 1);
+    setTimeout(async () => {
+      try {
+        await load("nightly");
+      } catch (e) {
+        console.error(new Date().toISOString(), "library: nightly reload failed:", e.message);
+      }
+      scheduleNightly();
+    }, next.getTime() - Date.now()).unref();
+  };
+  scheduleNightly();
 }
 
 /** GET /state/library: the whole library, gzipped when the client accepts it, with an ETag. */

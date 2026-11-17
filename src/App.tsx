@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { onLibraryChange } from "./api";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { NavBar } from "./components/NavBar";
 import { Spinner } from "./components/States";
@@ -16,11 +17,15 @@ const Reader = lazy(() => import("./pages/Reader").then((m) => ({ default: m.Rea
 export function App() {
   const loc = useLocation();
   const reading = loc.pathname.startsWith("/read/");
+  // A newer library (changed on the server): the pages read it again. Not the reader, which would
+  // lose its place.
+  const [libVersion, setLibVersion] = useState(0);
+  useEffect(() => onLibraryChange(() => setLibVersion((v) => v + 1)), []);
   return (
     <>
       {!reading && <NavBar />}
       <main className={reading ? "" : "with-nav"}>
-        <Routes>
+        <Routes key={reading ? "reader" : libVersion}>
           <Route path="/" element={<Home />} />
           <Route path="/books" element={<Library />} />
           <Route path="/unread" element={<Unread />} />

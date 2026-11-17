@@ -91,6 +91,9 @@ export class ApiError extends Error {
 
 let books: Book[] = [];
 let byId = new Map<number, Book>();
+/** The library's version (its ETag on the server): changes when metadata.db changes. */
+let libraryVersion = "";
+const listeners = new Set<() => void>();
 
 let reloading = false;
 /** Behind a sign-in proxy an expired session turns requests into redirects to the login page:
@@ -108,12 +111,30 @@ async function fetchLibrary(): Promise<void> {
   const res = await fetch("/state/library", { redirect: "manual" });
   if (res.type === "opaqueredirect" || res.status === 401) sessionExpired();
   if (!res.ok) throw new ApiError(res.status, `The library didn't load: ${res.status} ${res.statusText}`);
-  const data = (await res.json()) as { books: Book[] };
+  const data = (await res.json()) as { version?: string; books: Book[] };
+  if (libraryVersion && data.version === libraryVersion) return; // unchanged
+  libraryVersion = data.version ?? String(Date.now());
   books = data.books;
   byId = new Map(books.map((b) => [b.application_id, b]));
   haystacks.clear();
   categoryCache.clear();
+  listeners.forEach((f) => f());
 }
+
+/** Called when a newer library has been loaded (the pages re-read it). */
+export function onLibraryChange(f: () => void): () => void {
+  listeners.add(f);
+  return () => listeners.delete(f);
+}
+
+// A tab left open for days: when it comes back into view (at most every minute), ask the server
+// whether the library changed. Usually a 304; the browser then hands back what it has.
+let lastCheck = Date.now();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || Date.now() - lastCheck < 60_000) return;
+  lastCheck = Date.now();
+  fetchLibrary().catch(() => {});
+});
 
 /** Loaded once before the app renders (main.tsx). A failure is shown by the pages (api calls retry). */
 let libraryPromise: Promise<void> = fetchLibrary();
