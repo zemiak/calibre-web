@@ -1,16 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// In development, /api is proxied to the calibre content server: CALIBRE_API, a local one by default
-// (CALIBRE_API=https://calibre.example.com npm run dev for another). In production nginx does the same.
-const target = process.env.CALIBRE_API ?? "http://localhost:8080";
-
-// /state goes to the reading-state service (npm run state, or ./run.sh starts both). DEV_USER plays
-// the sign-in proxy: it becomes the X-Forwarded-Email header, so the marks belong to that user.
+// Development: covers, book files and (unless LIBRARY_DIR is set) the library come from a deployed
+// calibre-web (REMOTE), which serves them from the calibre library folder. Reading state goes to the
+// local state service (npm run state, or ./run.sh, which starts both).
+const remote = process.env.REMOTE ?? "https://calibre-web.kubernetes.home.zemiak.dev";
 const state = process.env.STATE_URL ?? "http://localhost:8081";
+const localLibrary = !!process.env.LIBRARY_DIR;
+
+// DEV_USER plays the sign-in proxy: it becomes the X-Forwarded-Email header, so the marks belong to
+// that user, plus an unsigned stand-in for the Google ID token (DEV_NAME, DEV_PICTURE).
 const devUser = process.env.DEV_USER;
-// …and an unsigned stand-in for the Google ID token that oauth2-proxy forwards, so the account page
-// has a profile to show (DEV_NAME, DEV_PICTURE).
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const devToken = devUser
   ? `${b64({ alg: "none", typ: "JWT" })}.${b64({
@@ -18,21 +18,18 @@ const devToken = devUser
       name: process.env.DEV_NAME ?? devUser.split("@")[0], picture: process.env.DEV_PICTURE,
     })}.`
   : undefined;
+const userHeaders = devUser ? { "X-Forwarded-Email": devUser, Authorization: `Bearer ${devToken}` } : {};
+const toRemote = { target: remote, changeOrigin: true, secure: false };
 
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api": {
-        target,
-        changeOrigin: true,
-        secure: false,
-        rewrite: (p) => p.replace(/^\/api/, ""),
-      },
-      "/state": {
-        target: state,
-        ...(devUser ? { headers: { "X-Forwarded-Email": devUser, Authorization: `Bearer ${devToken}` } } : {}),
-      },
+      // The first matching prefix wins.
+      "/state/library": localLibrary ? { target: state } : toRemote,
+      "/state": { target: state, headers: userHeaders },
+      "/covers": toRemote,
+      "/files": toRemote,
     },
   },
 });

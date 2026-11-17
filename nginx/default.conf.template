@@ -1,5 +1,29 @@
-# The single-page app, /api/ → the calibre content server (same origin: no CORS, and the reader can
-# fetch book files directly), /state/ → the per-user reading state service in the same pod.
+# The single-page app; /covers/ and /files/ straight from the calibre library folder (LIBRARY_DIR,
+# mounted read-only); /state/ → the state service in the same pod (the library's metadata, reading
+# state, downloads); /api/ → the calibre content server (kept for anything still pointing at it).
+
+# Scaled covers, kept for a year (the URLs carry the book's version, so they never go stale).
+proxy_cache_path /var/cache/nginx/covers levels=1:2 keys_zone=covers:10m max_size=2g inactive=365d use_temp_path=off;
+
+# The cover scaler: /covers/<width>/<book folder> → that folder's cover.jpg, scaled to the width.
+server {
+    listen 127.0.0.1:8090;
+    access_log off;
+
+    location ~ "^/covers/(\d+)/(.+)$" {
+        alias ${LIBRARY_DIR}/$2/cover.jpg;
+        image_filter resize $1 -;
+        image_filter_jpeg_quality 80;
+        image_filter_interlace on;
+        image_filter_buffer 30M;
+    }
+}
+
+map $arg_inline $file_disposition {
+    "1"     inline;
+    default attachment;
+}
+
 server {
     listen 80;
     server_name _;
@@ -8,6 +32,42 @@ server {
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
 
+    location /covers/ {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_cache covers;
+        proxy_cache_key $uri$is_args$args;
+        proxy_cache_valid 200 365d;
+        proxy_cache_valid 404 10m;
+        proxy_cache_lock on;
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Cache $upstream_cache_status always;
+    }
+
+    # Book files. Only book formats: the library folder also holds metadata.db.
+    location ~ "^/files/(.+\.(?:epub|kepub|pdf|mobi|azw|azw3|azw4|fb2|fbz|cbz|cbr|cb7|djvu|docx|rtf|txt|txtz|htmlz|lit|pdb|mp3|m4a|m4b|zip))$" {
+        alias ${LIBRARY_DIR}/$1;
+        types {
+            application/epub+zip epub kepub;
+            application/pdf pdf;
+            application/x-mobipocket-ebook mobi azw azw3 azw4;
+            audio/mpeg mp3;
+            audio/mp4 m4a m4b;
+            application/zip zip cbz;
+        }
+        default_type application/octet-stream;
+        add_header Content-Disposition $file_disposition;
+        add_header Cache-Control "private, max-age=86400";
+    }
+    location /files/ { return 404; }
+
+    location /state/ {
+        proxy_pass http://127.0.0.1:${STATE_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64k;
+    }
+
     location /api/ {
         proxy_pass ${CALIBRE_API}/;
         proxy_http_version 1.1;
@@ -15,21 +75,8 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         proxy_set_header Connection "";
-        # Book files and covers: stream straight through (Range requests, long transfers).
         proxy_buffering off;
-        proxy_request_buffering off;
         proxy_read_timeout 10m;
-        proxy_send_timeout 10m;
-        client_max_body_size 1m;
-    }
-
-    # Reading state (server/state.mjs). The sign-in proxy's X-Forwarded-Email header passes
-    # through untouched; it is what identifies the user.
-    location /state/ {
-        proxy_pass http://127.0.0.1:${STATE_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        client_max_body_size 64k;
     }
 
     # Hashed build output: cache forever.

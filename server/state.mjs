@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
+import { libraryStatus, serveLibrary, startLibrary } from "./library.mjs";
 
 const DIR = process.env.STATE_DIR ?? "/data";
 const PORT = Number(process.env.STATE_PORT ?? 8081);
@@ -186,7 +187,9 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname.replace(/^\/state(?=\/|$)/, "") || "/";
   try {
-    if (path === "/health") return send(res, 200, { ok: true });
+    if (path === "/health") return send(res, 200, { ok: true, library: libraryStatus() });
+    // The library (no sign-in needed: it's the same for everyone).
+    if (path === "/library" && (req.method === "GET" || req.method === "HEAD")) return serveLibrary(req, res);
 
     const email = String(req.headers["x-forwarded-email"] ?? "").trim();
     const signedIn = !!email && email.includes("@");
@@ -195,11 +198,12 @@ const server = createServer(async (req, res) => {
     // it still redirects (the internal hostname), it just isn't counted.
     if (path === "/download" && req.method === "GET") {
       const to = url.searchParams.get("to") ?? "";
-      if (!/^\/api\/get\/[\w-]+\/\d+\/[\w-]*$/.test(to)) return send(res, 400, { error: "not a book file" });
+      if (!/^\/files\/[^?#]+$/.test(to) || to.includes("..")) return send(res, 400, { error: "not a book file" });
       if (signedIn) {
         const state = await load(email);
         touch(state, req);
-        const [, , , fmt, id] = to.split("/");
+        const id = url.searchParams.get("id");
+        const fmt = (to.match(/\.(\w+)$/)?.[1] ?? "").toLowerCase();
         const title = url.searchParams.get("title")?.slice(0, 500) || undefined;
         state.downloads.count++;
         state.downloads.recent = [{ id: Number(id), fmt, at: Date.now(), title }, ...state.downloads.recent].slice(0, RECENT_DOWNLOADS);
@@ -241,5 +245,6 @@ const server = createServer(async (req, res) => {
 });
 
 await mkdir(DIR, { recursive: true });
+startLibrary();
 server.listen(PORT, HOST, () => console.log(`state service on http://${HOST}:${PORT}, files in ${DIR}`));
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => server.close(() => process.exit(0)));

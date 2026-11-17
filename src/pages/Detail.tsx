@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  api, authorPath, coverUrl, downloadUrl, fileUrl, formatDate, formatIndex, formatSize, hasFormat, identifierUrl, isFinished, languageName,
+  api, authorPath, coverUrl, downloadUrl, fileUrl, filterKey, type Filter, formatDate, formatIndex, formatSize, hasFormat, identifierUrl, isFinished, languageName,
   Q, seriesPath, tagPath, thumbUrl, year, type Book,
 } from "../api";
 import { BookCard, Stars } from "../components/Card";
@@ -137,14 +137,14 @@ function Header({ b }: { b: Book }) {
 
 function Related({ title, query, sort, order = "asc", more, exclude, sub }: {
   title: string;
-  query: string;
+  query: Filter;
   sort: "series" | "pubdate" | "title";
   order?: "asc" | "desc";
   more: string;
   exclude: number;
   sub?: (b: Book) => string | undefined;
 }) {
-  const res = useAsync(() => api.list(query, { num: 40, sort, order }), [query, sort, order]);
+  const res = useAsync(() => api.list(query, { num: 40, sort, order }), [filterKey(query), sort, order]);
   const items = (res.data?.items ?? []).filter((x) => x.application_id !== exclude);
   if (!items.length) return null;
   return (

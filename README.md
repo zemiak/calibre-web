@@ -1,6 +1,6 @@
 # calibre-web
 
-A web UI for a [calibre](https://calibre-ebook.com) library served by `calibre-server`, styled after
+A web UI for a [calibre](https://calibre-ebook.com) library, read straight from its folder, styled after
 [movies-frontend](https://github.com/zemiak/movies-frontend): dark, cover-first, with shelves and an
 inline EPUB reader.
 
@@ -28,10 +28,16 @@ inline EPUB reader.
 Keyboard shortcuts in the reader: ←/→ or PageUp/PageDown or space turn pages, t contents, u hide the
 controls, Esc back. A tap on the text hides and shows the controls; a swipe turns the page.
 
-Books come from the content server's AJAX API (`/ajax/search`, `/ajax/books`, `/ajax/category`,
-`/get/thumb`, `/get/<format>`); nothing is read from `metadata.db` directly, so the library can be
-edited in calibre while this runs. The server must run with `--disable-auth` (or sit behind
-something that signs the user in, like an oauth2-proxy; an expired session reloads the page).
+The library comes from calibre's own `metadata.db`, opened read-only by the state service
+(`server/library.mjs`, Node's built-in SQLite) and kept in memory: about 2 MB of JSON for 2000
+books (300 kB gzipped), reloaded when the file changes, so the library can still be edited in
+calibre. The app loads it whole from `/state/library` (an ETag makes a repeat visit a 304) and
+searches, sorts and counts it in the browser; search ignores case and accents. Covers and book
+files come straight from the library folder through nginx: `/covers/<width>/<book folder>` is that
+folder's `cover.jpg` scaled by nginx's image module, cached on disk and sent as immutable for a
+year (the URL carries the book's last-modified time), `/files/<book folder>/<file>` the book files
+(only book formats; `?inline=1` to show rather than save). calibre-server isn't needed. Behind a
+sign-in proxy an expired session reloads the page.
 
 Reading marks go to `/state`, a small dependency-free Node service (`server/state.mjs`) that keeps
 one JSON file per user in `STATE_DIR`. The user is the `X-Forwarded-Email` header that oauth2-proxy
@@ -45,27 +51,30 @@ Tooling comes from [devbox](https://www.jetify.com/devbox) (Node 22).
 
 ```sh
 devbox run -- npm install
-./run.sh                                                            # http://localhost:5173, API: calibre.kubernetes.home.zemiak.dev, state service, user dev@localhost
-DEV_USER=me@example.com ./run.sh                                   # another user's marks
-devbox run -- npm run dev                                           # API: http://localhost:8080, no state service (marks stay in the browser)
-CALIBRE_API=https://calibre.example.com devbox run -- npm run dev   # another calibre-server
+./run.sh                                         # http://localhost:5173, state service, user dev@localhost
+DEV_USER=me@example.com ./run.sh                 # another user's marks
+LIBRARY_DIR=/path/to/Calibre ./run.sh            # read that library's metadata.db locally
+REMOTE=https://calibre-web.example.com ./run.sh  # another deployment for library, covers, files
 devbox run -- npm run build                                         # typecheck + dist/
 ```
 
-`/api/*` is proxied to calibre-server and `/state/*` to the state service (`vite.config.ts` in
-development, nginx in production), so the app, the API and the marks share an origin. In
-development `DEV_USER` is sent as `X-Forwarded-Email`, standing in for the sign-in proxy.
+In development (`vite.config.ts`) the library, covers and files come from a deployed calibre-web
+(`REMOTE`, default the internal calibre-web hostname) unless `LIBRARY_DIR` is set; `/state/*` goes
+to the local state service. `DEV_USER` is sent as `X-Forwarded-Email`, with a stand-in ID token,
+playing the sign-in proxy.
 
 ## Deployment
 
 `Dockerfile`: builds the app and serves it with nginx; the same image runs the state service as a
-second container (`node /srv/state/state.mjs`, with a volume at `STATE_DIR`). Environment:
+second container (`node /srv/state/state.mjs`, with a volume at `STATE_DIR`). Both need the calibre
+library folder at `LIBRARY_DIR` (read-only is enough). Environment:
 
 | Variable | Default | |
 |---|---|---|
-| `CALIBRE_API` | `http://calibre.calibre.svc.cluster.local:8080` | the calibre-server that `/api/` proxies to |
+| `LIBRARY_DIR` | `/library` | the calibre library folder, with `metadata.db` (both containers) |
+| `CALIBRE_API` | `http://calibre:8080` | a calibre-server that `/api/` still proxies to (unused by the app) |
 | `STATE_PORT` | `8081` | where nginx finds the state service (both containers) |
 | `STATE_DIR` | `/data` | the state service's files, one per user |
 
-On k3s it is `apps/calibre-web` in the media-rpi repo: a build job picks up new commits on `main`,
+On k3s it is `apps/calibre/base/calibre-web` in the media-rpi repo: a build job picks up new commits on `main`,
 builds the image with kaniko and restarts the Deployment.

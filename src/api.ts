@@ -1,12 +1,9 @@
-// A client for the calibre content server's AJAX API (calibre-server with --disable-auth). Everything
-// goes through /api, proxied by nginx (production) or the Vite dev server (development).
-
-export const API = "/api";
+// The calibre library, loaded whole from /state/library (server/library.mjs reads calibre's
+// metadata.db and keeps it in memory) and searched, sorted and counted here in the browser.
+// Covers (/covers/) and book files (/files/) come straight from the library folder through nginx.
 
 export interface FormatInfo {
-  path: string;
   size: number;
-  mtime: string;
 }
 
 export interface CustomField {
@@ -42,10 +39,12 @@ export interface Book {
   /** Lower-case format names (epub, pdf, mp3, …). */
   formats: string[];
   format_metadata: Record<string, FormatInfo>;
-  main_format: Record<string, string>;
-  other_formats: Record<string, string>;
   pages?: number | null;
   user_metadata: Record<string, CustomField>;
+  /** The book's folder in the library, and its files there by format. */
+  path: string;
+  has_cover: boolean;
+  files: Record<string, string>;
 }
 
 export interface CategoryItem {
@@ -88,19 +87,13 @@ export class ApiError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | undefined | null>;
+// ------------------------------------------------------------------ the library
 
-function qs(q: Query = {}): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(q)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  }
-  const s = p.toString();
-  return s ? "?" + s : "";
-}
+let books: Book[] = [];
+let byId = new Map<number, Book>();
 
 let reloading = false;
-/** Behind a sign-in proxy an expired session turns API calls into redirects to the login page:
+/** Behind a sign-in proxy an expired session turns requests into redirects to the login page:
  * reload the page, which goes through the login and comes back. */
 function sessionExpired(): never {
   if (!reloading) {
@@ -110,121 +103,257 @@ function sessionExpired(): never {
   throw new ApiError(401, "Signed out");
 }
 
-async function get<T>(path: string, q?: Query): Promise<T> {
-  const res = await fetch(API + path + qs(q), { redirect: "manual" });
+async function fetchLibrary(): Promise<void> {
+  // no-cache semantics come from the server: the browser revalidates (a 304 when nothing changed).
+  const res = await fetch("/state/library", { redirect: "manual" });
   if (res.type === "opaqueredirect" || res.status === 401) sessionExpired();
-  if (!res.ok) {
-    const text = (await res.text().catch(() => "")).trim();
-    throw new ApiError(res.status, text.slice(0, 200) || `${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
+  if (!res.ok) throw new ApiError(res.status, `The library didn't load: ${res.status} ${res.statusText}`);
+  const data = (await res.json()) as { books: Book[] };
+  books = data.books;
+  byId = new Map(books.map((b) => [b.application_id, b]));
+  haystacks.clear();
+  categoryCache.clear();
 }
 
-// The library: calibre-server can serve several; this UI shows the default one. Loaded once before
-// the app renders (main.tsx); an empty id makes the server use its default anyway.
-let lib = "";
-export const libraryLoaded: Promise<void> = get<{ default_library: string }>("/ajax/library-info")
-  .then((i) => void (lib = i.default_library ?? ""))
-  .catch(() => {});
+/** Loaded once before the app renders (main.tsx). A failure is shown by the pages (api calls retry). */
+let libraryPromise: Promise<void> = fetchLibrary();
+export const libraryLoaded: Promise<void> = libraryPromise.catch(() => {});
+const ready = () =>
+  libraryPromise.catch(() => {
+    libraryPromise = fetchLibrary();
+    return libraryPromise;
+  });
 
-/** Category names travel hex-encoded in the URL (calibre's convention). */
-const hex = (s: string) =>
-  Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, "0")).join("");
+// ------------------------------------------------------------------ filters (calibre's search, in memory)
 
-const categoryCache = new Map<string, Promise<CategoryItem[]>>();
+/** A search expression: what calibre's search language did, as data. */
+export type Filter =
+  | { and: Filter[] }
+  | { or: Filter[] }
+  | { not: Filter }
+  | { eq: [string, string] }
+  | { has: [string, string] }
+  | { text: string };
+
+type Part = Filter | false | undefined | null | "";
+
+export const Q = {
+  /** Exact match, case-insensitive: tags = "Fantasy"; for custom columns "#finished" = "true". */
+  eq: (field: string, value: string): Filter => ({ eq: [field, value] }),
+  /** Contains, case- and accent-insensitive (formats: has that format). */
+  has: (field: string, value: string): Filter => ({ has: [field, value] }),
+  and: (...parts: Part[]): Filter => {
+    const ps = parts.filter(Boolean) as Filter[];
+    return ps.length === 1 ? ps[0] : { and: ps };
+  },
+  or: (...parts: Part[]): Filter => {
+    const ps = parts.filter(Boolean) as Filter[];
+    return ps.length === 1 ? ps[0] : { or: ps };
+  },
+  not: (f: Filter): Filter => ({ not: f }),
+  /** Free text: every word must appear in the title, authors, series, tags, description or publisher. */
+  text: (term: string): Filter => ({ text: term }),
+};
+
+/** A stable string for a filter (React keys and effect dependencies). */
+export const filterKey = (f?: Filter) => JSON.stringify(f ?? null);
+
+/** Lower case without accents: "Čierny" matches "cierny". */
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+const haystacks = new Map<number, string>();
+function haystack(b: Book): string {
+  let h = haystacks.get(b.application_id);
+  if (h === undefined) {
+    h = fold([b.title, ...b.authors, b.series ?? "", ...b.tags, stripHtml(b.comments), b.publisher ?? ""].join("\n"));
+    haystacks.set(b.application_id, h);
+  }
+  return h;
+}
+
+/** The values of a field, as strings. */
+function values(b: Book, field: string): string[] {
+  switch (field) {
+    case "tags": return b.tags;
+    case "authors": return b.authors;
+    case "series": return b.series ? [b.series] : [];
+    case "publisher": return b.publisher ? [b.publisher] : [];
+    case "title": return [b.title];
+    case "comments": return [stripHtml(b.comments)];
+    case "formats": return b.formats;
+    case "languages": return b.languages.flatMap((c) => [c, languageName(c)]);
+    case "identifiers": return Object.entries(b.identifiers).map(([k, v]) => `${k}:${v}`);
+    default:
+      if (field.startsWith("#")) {
+        const v = b.user_metadata[field]?.["#value#"];
+        if (v === null || v === undefined) return [];
+        return Array.isArray(v) ? v.map(String) : [String(v)];
+      }
+      return [];
+  }
+}
+
+function matches(b: Book, f: Filter): boolean {
+  if ("and" in f) return f.and.every((x) => matches(b, x));
+  if ("or" in f) return f.or.some((x) => matches(b, x));
+  if ("not" in f) return !matches(b, f.not);
+  if ("eq" in f) {
+    const want = f.eq[1].toLowerCase();
+    return values(b, f.eq[0]).some((v) => v.toLowerCase() === want);
+  }
+  if ("has" in f) {
+    const want = fold(f.has[1]);
+    return f.has[0] === "formats" ? b.formats.includes(want) : values(b, f.has[0]).some((v) => fold(v).includes(want));
+  }
+  const words = fold(f.text).split(/\s+/).filter(Boolean);
+  const h = haystack(b);
+  return words.every((w) => h.includes(w));
+}
+
+const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+const time = (s?: string | null) => (s ? Date.parse(s) || 0 : 0);
+const size = (b: Book) => Math.max(0, ...Object.values(b.format_metadata).map((m) => m.size));
+
+function comparator(sort: SortKey): (a: Book, b: Book) => number {
+  const byTitle = (a: Book, b: Book) => collator.compare(a.title_sort, b.title_sort);
+  const then = (f: (a: Book, b: Book) => number) => (a: Book, b: Book) => f(a, b) || byTitle(a, b);
+  switch (sort) {
+    case "authors": return then((a, b) => collator.compare(a.author_sort, b.author_sort));
+    case "timestamp": return then((a, b) => time(a.timestamp) - time(b.timestamp));
+    case "pubdate": return then((a, b) => time(a.pubdate) - time(b.pubdate));
+    case "last_modified": return then((a, b) => time(a.last_modified) - time(b.last_modified));
+    case "rating": return then((a, b) => a.rating - b.rating);
+    case "size": return then((a, b) => size(a) - size(b));
+    case "series":
+      // Books in a series first (by name, then index), the rest after.
+      return then((a, b) => {
+        if (!a.series !== !b.series) return a.series ? -1 : 1;
+        return collator.compare(a.series ?? "", b.series ?? "") || (a.series_index ?? 0) - (b.series_index ?? 0);
+      });
+    default: return byTitle;
+  }
+}
+
+function run(filter: Filter | undefined, o: SearchOpts): { all: Book[]; page: Book[] } {
+  const found = filter ? books.filter((b) => matches(b, filter)) : [...books];
+  const cmp = comparator(o.sort ?? "title");
+  const sorted = (o.order ?? "asc") === "desc" ? found.sort((a, b) => cmp(b, a)) : found.sort(cmp);
+  const offset = o.offset ?? 0;
+  return { all: sorted, page: sorted.slice(offset, offset + (o.num ?? 50)) };
+}
+
+const categoryCache = new Map<string, CategoryItem[]>();
+
+function categoryItems(name: Category): CategoryItem[] {
+  const cached = categoryCache.get(name);
+  if (cached) return cached;
+  const counts = new Map<string, { count: number; rated: number; sum: number }>();
+  const add = (k: string, b: Book) => {
+    const c = counts.get(k) ?? { count: 0, rated: 0, sum: 0 };
+    c.count++;
+    if (b.rating) {
+      c.rated++;
+      c.sum += b.rating;
+    }
+    counts.set(k, c);
+  };
+  for (const b of books) {
+    switch (name) {
+      case "authors": b.authors.forEach((a) => add(a, b)); break;
+      case "tags": b.tags.forEach((t) => add(t, b)); break;
+      case "series": if (b.series) add(b.series, b); break;
+      case "publisher": if (b.publisher) add(b.publisher, b); break;
+      case "languages": b.languages.forEach((l) => add(languageName(l), b)); break;
+      case "rating": if (b.rating) add("★".repeat(Math.round(b.rating)), b); break;
+    }
+  }
+  const items = [...counts].map(([n, c]) => ({ name: n, count: c.count, average_rating: c.rated ? c.sum / c.rated : 0, url: "", has_children: false }));
+  categoryCache.set(name, items);
+  return items;
+}
 
 export const api = {
-  search: (query: string, o: SearchOpts = {}) =>
-    get<SearchResult>(`/ajax/search/${lib}`, {
-      query,
-      num: o.num ?? 50,
-      offset: o.offset ?? 0,
-      sort: o.sort ?? "title",
-      sort_order: o.order ?? "asc",
-    }),
+  search: async (filter: Filter | undefined, o: SearchOpts = {}): Promise<SearchResult> => {
+    await ready();
+    const { all, page } = run(filter, o);
+    return { total_num: all.length, offset: o.offset ?? 0, num: page.length, book_ids: page.map((b) => b.application_id) };
+  },
 
   /** Metadata of several books, in the order of `ids` (missing ones are skipped). */
   books: async (ids: number[]): Promise<Book[]> => {
-    if (!ids.length) return [];
-    const r = await get<Record<string, Book>>(`/ajax/books/${lib}`, { ids: ids.join(",") });
-    return ids.map((id) => r[String(id)]).filter(Boolean);
+    await ready();
+    return ids.map((id) => byId.get(id)).filter((b): b is Book => !!b);
   },
 
-  book: (id: number | string) => get<Book>(`/ajax/book/${id}/${lib}`),
-
-  /** Search, then the matching books' metadata: one page of results. */
-  list: async (query: string, o: SearchOpts = {}): Promise<Page> => {
-    const r = await api.search(query, o);
-    return { items: await api.books(r.book_ids), total: r.total_num };
+  book: async (id: number | string): Promise<Book> => {
+    await ready();
+    const b = byId.get(Number(id));
+    if (!b) throw new ApiError(404, "There's no such book in the library.");
+    return b;
   },
 
-  category: (name: Category, o: { sort?: "name" | "popularity" | "rating"; order?: Order; num?: number } = {}) =>
-    get<{ total_num: number; items: CategoryItem[] }>(`/ajax/category/${hex(name)}/${lib}`, {
-      num: o.num ?? 10000,
-      sort: o.sort ?? "name",
-      sort_order: o.order ?? (o.sort && o.sort !== "name" ? "desc" : "asc"),
-    }).then((r) => r.items),
-
-  /** The whole category, fetched once per page load (they are small: a few hundred entries). */
-  categoryCached: (name: Category): Promise<CategoryItem[]> => {
-    let p = categoryCache.get(name);
-    if (!p) {
-      p = api.category(name).catch((e) => {
-        categoryCache.delete(name);
-        throw e;
-      });
-      categoryCache.set(name, p);
-    }
-    return p;
+  /** One page of matching books. */
+  list: async (filter: Filter | undefined, o: SearchOpts = {}): Promise<Page> => {
+    await ready();
+    const { all, page } = run(filter, o);
+    return { items: page, total: all.length };
   },
-};
 
-// ------------------------------------------------------------------ calibre search expressions
-
-const quote = (s: string) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-
-/** Builders for calibre's search language (https://manual.calibre-ebook.com/gui.html#the-search-interface). */
-export const Q = {
-  /** Exact match: tags:"=Fantasy". */
-  eq: (field: string, value: string) => `${field}:${quote("=" + value)}`,
-  /** Contains: authors:"Child". */
-  has: (field: string, value: string) => `${field}:${quote(value)}`,
-  and: (...parts: (string | false | undefined | null)[]) => parts.filter(Boolean).join(" and "),
-  or: (...parts: (string | false | undefined | null)[]) => {
-    const ps = parts.filter(Boolean);
-    return ps.length > 1 ? "(" + ps.join(" or ") + ")" : (ps[0] ?? "");
+  category: async (name: Category, o: { sort?: "name" | "popularity" | "rating"; order?: Order; num?: number } = {}): Promise<CategoryItem[]> => {
+    await ready();
+    const sort = o.sort ?? "name";
+    const order = o.order ?? (sort === "name" ? "asc" : "desc");
+    const cmp =
+      sort === "popularity" ? (a: CategoryItem, b: CategoryItem) => a.count - b.count || collator.compare(b.name, a.name)
+      : sort === "rating" ? (a: CategoryItem, b: CategoryItem) => a.average_rating - b.average_rating
+      : (a: CategoryItem, b: CategoryItem) => collator.compare(a.name, b.name);
+    const items = [...categoryItems(name)].sort((a, b) => (order === "desc" ? cmp(b, a) : cmp(a, b)));
+    return items.slice(0, o.num ?? 10000);
   },
-  /** Free text: every word must appear in the title, authors, series, tags, description or publisher. */
-  text: (term: string) => {
-    const words = term.trim().split(/\s+/).filter(Boolean);
-    const fields = ["title", "authors", "series", "tags", "comments", "publisher"];
-    return Q.and(...words.map((w) => Q.or(...fields.map((f) => Q.has(f, w)))));
-  },
+
+  categoryCached: (name: Category) => api.category(name),
 };
 
 /** The library's own split: comics and magazines have their own pages; everything else is "books"
  * (the home screen shows only those). */
 export const COMICS = Q.eq("tags", "komix");
 export const MAGAZINES = Q.eq("tags", "magazine");
-export const BOOKS_ONLY = Q.and(`not ${COMICS}`, `not ${MAGAZINES}`);
+export const BOOKS_ONLY = Q.and(Q.not(COMICS), Q.not(MAGAZINES));
 const AUDIO_FORMATS = ["mp3", "m4b", "m4a"];
 /** Books to read: no comics, magazines or audiobooks. */
-export const TEXT_BOOKS = Q.and(BOOKS_ONLY, ...AUDIO_FORMATS.map((f) => `not formats:${f}`));
+export const TEXT_BOOKS = Q.and(BOOKS_ONLY, ...AUDIO_FORMATS.map((f) => Q.not(Q.has("formats", f))));
 /** Audiobooks: any book with an audio file (comics and magazines aside). */
-export const AUDIOBOOKS = Q.and(BOOKS_ONLY, Q.or(...AUDIO_FORMATS.map((f) => `formats:${f}`)));
+export const AUDIOBOOKS = Q.and(BOOKS_ONLY, Q.or(...AUDIO_FORMATS.map((f) => Q.has("formats", f))));
+/** Marked finished in calibre's own "Finished" column. */
+export const CALIBRE_FINISHED = Q.eq("#finished", "true");
 
 // ------------------------------------------------------------------ URLs
 
-/** A cover scaled to fit w×h (calibre keeps the aspect ratio). */
-export const thumbUrl = (id: number, w = 400, h = 600) => `${API}/get/thumb/${id}/${lib}?sz=${w}x${h}`;
-export const coverUrl = (id: number) => `${API}/get/cover/${id}/${lib}`;
+/** Path segments, each percent-encoded (the folder and file names have spaces, commas, …). */
+const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+/** Changes when the book is edited in calibre: covers are cached for a year under this. */
+const version = (b: Book) => (time(b.last_modified) / 1000).toString(36);
+
+/** A cover `w` pixels wide (nginx scales and caches it; the height follows the cover). */
+export function thumbUrl(id: number, w = 400, _h?: number): string | undefined {
+  const b = byId.get(id);
+  if (!b?.has_cover) return undefined;
+  // A few fixed widths, so the cache holds few variants of each cover.
+  const width = [120, 200, 300, 400, 600, 800, 1000].find((x) => x >= w) ?? 1000;
+  return `/covers/${width}/${enc(b.path)}?v=${version(b)}`;
+}
+export const coverUrl = (id: number) => thumbUrl(id, 800);
 /** The book file; `inline` makes the browser show it (PDF viewer, audio) instead of saving it. */
-export const fileUrl = (id: number, fmt: string, inline = false) =>
-  `${API}/get/${fmt}/${id}/${lib}` + (inline ? "?content_disposition=inline" : "");
+export function fileUrl(id: number, fmt: string, inline = false): string {
+  const b = byId.get(id);
+  const name = b?.files[fmt];
+  if (!b || !name) return "#";
+  return `/files/${enc(b.path)}/${enc(name)}` + (inline ? "?inline=1" : "");
+}
 /** A download link: through the state service, which counts it for the signed-in user and redirects
  * to the file. */
 export const downloadUrl = (id: number, fmt: string, title?: string) =>
-  `/state/download?to=${encodeURIComponent(fileUrl(id, fmt))}` + (title ? `&title=${encodeURIComponent(title)}` : "");
+  `/state/download?to=${encodeURIComponent(fileUrl(id, fmt))}&id=${id}` + (title ? `&title=${encodeURIComponent(title)}` : "");
 
 // ------------------------------------------------------------------ formatting
 
@@ -265,7 +394,7 @@ export function formatSize(bytes: number): string {
 export const authorsLine = (b: Book) => b.authors.join(", ");
 
 export const hasFormat = (b: Book, fmt: string) => b.formats.includes(fmt);
-export const isAudiobook = (b: Book) => hasFormat(b, "mp3") || hasFormat(b, "m4b");
+export const isAudiobook = (b: Book) => ["mp3", "m4b", "m4a"].some((f) => hasFormat(b, f));
 
 /** The "Finished" custom column (a yes/no column), if the library has one. */
 export function isFinished(b: Book): boolean {

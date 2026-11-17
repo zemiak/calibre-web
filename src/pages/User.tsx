@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { api, AUDIOBOOKS, bookPath, COMICS, MAGAZINES, Q, TEXT_BOOKS, thumbUrl } from "../api";
+import { api, AUDIOBOOKS, bookPath, CALIBRE_FINISHED, COMICS, MAGAZINES, Q, TEXT_BOOKS, thumbUrl, type Filter } from "../api";
 import { Img } from "../components/Img";
 import { ErrorState, Spinner } from "../components/States";
 import { useAsync, useDocumentTitle } from "../hooks";
@@ -16,16 +16,16 @@ interface Stats {
   reading: number;
 }
 
-const count = (q: string) => api.search(q, { num: 1 }).then((r) => r.total_num);
+const count = (q?: Filter) => api.search(q, { num: 1 }).then((r) => r.total_num);
 
 async function loadStats(): Promise<Stats> {
   const [total, audio, comics, magazines, textIds, calibreFinished] = await Promise.all([
-    count(""),
+    count(),
     count(AUDIOBOOKS),
     count(COMICS),
     count(MAGAZINES),
     api.search(TEXT_BOOKS, { num: 100000 }).then((r) => r.book_ids),
-    api.search(Q.and(TEXT_BOOKS, "#finished:true"), { num: 100000 }).then((r) => new Set(r.book_ids)).catch(() => new Set<number>()),
+    api.search(Q.and(TEXT_BOOKS, CALIBRE_FINISHED), { num: 100000 }).then((r) => new Set(r.book_ids)),
   ]);
   const unread = textIds.filter((id) => !calibreFinished.has(id) && !progress.get(id)?.finished).length;
   return {

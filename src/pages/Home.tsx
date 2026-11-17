@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  api, authorPath, authorsLine, BOOKS_ONLY, bookPath, formatDate, TEXT_BOOKS, hasFormat, Q, seriesLabel, seriesPath, shuffle, stripHtml, tagPath, thumbUrl, year,
+  api, authorPath, authorsLine, BOOKS_ONLY, bookPath, CALIBRE_FINISHED, type Filter, formatDate, TEXT_BOOKS, hasFormat, Q, seriesLabel, seriesPath, shuffle, stripHtml, tagPath, thumbUrl, year,
   type Book, type CategoryItem,
 } from "../api";
 import { BookCard, SeriesCard, Stars } from "../components/Card";
@@ -25,7 +25,7 @@ interface HomeData {
 const newSub = (b: Book) => [formatDate(b.pubdate), b.authors.join(", ")].filter(Boolean).join(" · ");
 
 /** Home shows books only: comics and magazines have their own pages in the nav bar. */
-const only = (q?: string) => Q.and(BOOKS_ONLY, q);
+const only = (q?: Filter) => Q.and(BOOKS_ONLY, q);
 
 async function loadHome(): Promise<HomeData> {
   // Every book id, newest first: the shelves below are slices of it (there's no random sort server-side).
@@ -33,9 +33,8 @@ async function loadHome(): Promise<HomeData> {
   const ids = all.book_ids;
   const randomIds = shuffle(ids.slice(24)).slice(0, 48);
   // Unread (no audiobooks): neither marked finished by this user nor in calibre's own "Finished" column; newest first.
-  const notInCalibre = await api.search(Q.and(TEXT_BOOKS, "not #finished:true"), { num: 100000, sort: "timestamp", order: "desc" })
-    .then((r) => r.book_ids)
-    .catch(() => api.search(TEXT_BOOKS, { num: 100000, sort: "timestamp", order: "desc" }).then((r) => r.book_ids)); // a library without that column
+  const notInCalibre = await api.search(Q.and(TEXT_BOOKS, Q.not(CALIBRE_FINISHED)), { num: 100000, sort: "timestamp", order: "desc" })
+    .then((r) => r.book_ids);
   const unreadIds = notInCalibre.filter((id) => !progress.get(id)?.finished).slice(0, 30);
   const [unread, newest, recent, random, tags, seriesCandidates, reading, audiobooks] = await Promise.all([
     api.books(unreadIds),

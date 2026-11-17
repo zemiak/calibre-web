@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, BOOKS_ONLY, COMICS, formatDate, formatIndex, MAGAZINES, Q, TEXT_BOOKS, type Book, type Order, type SortKey } from "../api";
+import { api, BOOKS_ONLY, COMICS, filterKey, type Filter, formatDate, formatIndex, MAGAZINES, Q, TEXT_BOOKS, type Book, type Order, type SortKey } from "../api";
 import { BookCard } from "../components/Card";
 import { ErrorState, Spinner } from "../components/States";
 import { useAsync, useDocumentTitle, useInView } from "../hooks";
@@ -22,7 +22,7 @@ const PAGE = 96;
 interface Props {
   title: string;
   /** A fixed calibre search expression (author / series / tag pages). */
-  base?: string;
+  base?: Filter;
   defaultSort?: SortKey;
   /** The second line of a card (default: the authors). */
   sub?: (b: Book) => string | undefined;
@@ -49,7 +49,7 @@ export function LibraryGrid({ title, base, defaultSort = "title", sub, intro }: 
     format && Q.has("formats", format),
     lang && Q.eq("languages", lang),
   );
-  const key = `${query}|${sort.key}|${sort.order}`;
+  const key = `${filterKey(query)}|${sort.key}|${sort.order}`;
 
   const [items, setItems] = useState<Book[]>([]);
   const [total, setTotal] = useState<number>();

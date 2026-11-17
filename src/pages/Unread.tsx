@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Q, TEXT_BOOKS, type Book } from "../api";
+import { api, CALIBRE_FINISHED, Q, TEXT_BOOKS, type Book } from "../api";
 import { BookCard } from "../components/Card";
 import { ErrorState, Spinner } from "../components/States";
 import { useAsync, useDocumentTitle, useInView } from "../hooks";
@@ -14,8 +14,7 @@ export function Unread() {
   useDocumentTitle("Unread");
   const ids = useAsync(async () => {
     const r = await api
-      .search(Q.and(TEXT_BOOKS, "not #finished:true"), { num: 100000, sort: "timestamp", order: "desc" })
-      .catch(() => api.search(TEXT_BOOKS, { num: 100000, sort: "timestamp", order: "desc" }));
+      .search(Q.and(TEXT_BOOKS, Q.not(CALIBRE_FINISHED)), { num: 100000, sort: "timestamp", order: "desc" });
     return r.book_ids.filter((id) => !progress.get(id)?.finished);
   }, []);
   const [items, setItems] = useState<Book[]>([]);
