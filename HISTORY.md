@@ -3,6 +3,10 @@
 What changed in each version, newest first. The version is in `package.json`; the account page
 shows it and links to this page. Versions before 1.3.0 were numbered afterwards.
 
+## 2026-11-20 — 1.3.1: Home shelf order
+
+- Home page: the Wishlist shelf comes first, then Unread, then Favorites.
+
 ## 2026-11-20 — 1.3.0: Wishlist, favorites, unread marks, Goodreads
 
 - **Wishlist and favorites**: a star (books to read) and a heart (books you liked) on the book page.

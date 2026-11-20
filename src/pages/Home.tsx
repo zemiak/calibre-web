@@ -190,9 +190,19 @@ export function Home() {
     <div className="home">
       <Hero items={data.featured} />
       <div className="shelves">
+        {data.wishlist.length > 0 && (
+          <Shelf title="Wishlist" more="/wishlist">
+            {data.wishlist.map((b) => <BookCard key={b.application_id} book={b} />)}
+          </Shelf>
+        )}
         {data.unread.length > 0 && (
           <Shelf title="Unread" more="/unread">
             {data.unread.map((b) => <BookCard key={b.application_id} book={b} />)}
+          </Shelf>
+        )}
+        {data.favorites.length > 0 && (
+          <Shelf title="Favorites" more="/favorites">
+            {data.favorites.map((b) => <BookCard key={b.application_id} book={b} />)}
           </Shelf>
         )}
         {data.newest.length > 0 && (
@@ -206,11 +216,6 @@ export function Home() {
               const p = progress.get(b.application_id);
               return <BookCard key={b.application_id} book={b} sub={p ? `${Math.round(p.pct)}% · ${authorsLine(b)}` : undefined} />;
             })}
-          </Shelf>
-        )}
-        {data.wishlist.length > 0 && (
-          <Shelf title="Wishlist" more="/wishlist">
-            {data.wishlist.map((b) => <BookCard key={b.application_id} book={b} />)}
           </Shelf>
         )}
         <Shelf title="Recently Added" more="/books?sort=timestamp">
@@ -227,11 +232,6 @@ export function Home() {
               {items.map((b) => <BookCard key={b.application_id} book={b} />)}
             </Shelf>
           ) : null,
-        )}
-        {data.favorites.length > 0 && (
-          <Shelf title="Favorites" more="/favorites">
-            {data.favorites.map((b) => <BookCard key={b.application_id} book={b} />)}
-          </Shelf>
         )}
         {data.audiobooks.length > 0 && (
           <Shelf title="Audiobooks" more="/books?format=mp3&sort=timestamp">
