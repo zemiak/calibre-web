@@ -58,6 +58,8 @@ main.with-nav { padding-bottom: 64px; }
 }
 .nav-links a:hover { color: var(--fg); background: rgba(255,255,255,.08); }
 .nav-links a.active { color: #000; background: var(--fg); }
+.nav-links a { display: flex; align-items: center; }
+.nav-links a svg { display: none; }
 .search-box {
   display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 36px; border-radius: 999px;
   background: rgba(255,255,255,.1); color: var(--fg-2); width: min(260px, 30vw);
@@ -117,9 +119,13 @@ main.with-nav { padding-bottom: 64px; }
 .download-item .card-title { margin-top: 0; }
 
 @media (max-width: 720px) {
-  .navbar { gap: 12px; }
+  .navbar { gap: 4px; }
   .brand span { display: none; }
-  .navbar > .search-box { width: 40px; padding: 0 12px; transition: width .2s; }
+  .nav-links { gap: 0; }
+  .nav-links a { padding: 5px; }
+  .nav-links a.nav-home, .nav-links a span { display: none; }
+  .nav-links a svg { display: block; width: 19px; height: 19px; }
+  .navbar > .search-box { width: 34px; height: 34px; padding: 0 9px; transition: width .2s; }
   .navbar > .search-box:focus-within { width: 60vw; }
   .navbar > .search-box input { width: 0; }
   .navbar > .search-box:focus-within input { width: auto; }

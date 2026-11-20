@@ -3,6 +3,11 @@
 What changed in each version, newest first. The version is in `package.json`; the account page
 shows it and links to this page. Versions before 1.3.0 were numbered afterwards.
 
+## 2026-11-20 — 1.3.2: Icon nav bar on phones
+
+- On a phone the nav bar shows icons instead of names (the names are tooltips), and the Home link
+  is gone: the book icon on the left is home. The desktop nav bar is unchanged.
+
 ## 2026-11-20 — 1.3.1: Home shelf order
 
 - Home page: the Wishlist shelf comes first, then Unread, then Favorites.
