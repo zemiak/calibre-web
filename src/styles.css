@@ -9,6 +9,8 @@
   --fg-3: rgba(243, 240, 246, 0.48);
   --accent: #f0b04a;
   --accent-2: #e0801f;
+  --wish: #ffd23f;
+  --fav: #ff4d6a;
   --line: rgba(255, 255, 255, 0.09);
   --glass: rgba(23, 20, 32, 0.62);
   --radius: 10px;
@@ -84,6 +86,21 @@ main.with-nav { padding-bottom: 64px; }
 .user-section { margin-bottom: 38px; }
 .user-section h2 { font-size: 20px; margin-bottom: 14px; }
 .user-section.info { padding: 0; }
+.about-line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; color: var(--fg-2); }
+.about-line strong { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* /history: HISTORY.md, a card per version. */
+.history-page { max-width: 860px; }
+.history-intro { margin: -6px 0 22px; font-size: 14px; line-height: 1.5; }
+.history-entry { padding: 20px 22px; margin-bottom: 14px; border-radius: 14px; background: var(--bg-3); }
+.history-entry h2 { font-size: 18px; margin-bottom: 10px; }
+.history-body { color: var(--fg-2); font-size: 14px; line-height: 1.6; }
+.history-body p { margin: 0 0 8px; }
+.history-body ul { margin: 0; padding-left: 20px; }
+.history-body li { margin: 4px 0; }
+.history-body strong { color: var(--fg); }
+.history-body code, .history-entry h2 code { font-size: .92em; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,.08); overflow-wrap: anywhere; }
+.history-body a { text-decoration: underline; text-underline-offset: 3px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 10px; }
 .stat { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 14px; background: var(--bg-3); }
 .stat.link { transition: background .2s, transform .15s; }
@@ -123,6 +140,9 @@ main.with-nav { padding-bottom: 64px; }
 .btn .small { font-weight: 500; }
 .btn.icon { width: 44px; padding: 0; font-size: 18px; }
 .btn.icon.on { background: var(--accent); color: #000; }
+.btn.icon.wish.on { background: var(--wish); }
+.btn.icon.fav.on { background: var(--fav); color: #fff; }
+.btn.icon svg { display: block; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: rgba(255,255,255,.08); flex-wrap: wrap; }
@@ -169,13 +189,24 @@ select option { background: var(--bg-2); }
 .card-sub { margin-top: 2px; font-size: 13px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.2em; }
 .poster-card { width: var(--poster-w); }
 
-.badge-done, .badge-audio {
-  position: absolute; top: 7px; right: 7px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px;
-  display: grid; place-items: center; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+/* Wishlist, favorite, finished, audiobook: a row in the top right corner of a cover. */
+.cover-badges {
+  position: absolute; top: 7px; right: 7px; left: 7px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px;
+  pointer-events: none;
 }
-.badge-done { background: var(--accent); color: #000; }
-.badge-audio { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); color: #fff; font-size: 14px; }
-.badge-done + .badge-audio { right: 37px; }
+.badge {
+  min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  background: rgba(0,0,0,.6); backdrop-filter: blur(8px); color: #fff;
+}
+.badge-wish { color: var(--wish); }
+.badge-fav { color: var(--fav); }
+.badge-unread i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.badge-audio { font-size: 14px; }
+.download-item .cover-badges { top: 3px; right: 3px; left: 3px; gap: 2px; }
+.download-item .badge { min-width: 16px; height: 16px; padding: 0 3px; font-size: 9px; }
+.download-item .badge svg { width: 10px; height: 10px; }
+.download-item .badge-unread i { width: 6px; height: 6px; }
 .progress { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); }
 

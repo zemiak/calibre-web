@@ -1,4 +1,5 @@
-// Reading state: where the user is in each book and which ones they finished.
+// Reading state: where the user is in each book, which ones they finished, and their wishlist and
+// favorites.
 //
 // Behind the sign-in proxy it belongs to the signed-in user (the proxy's login email) and lives
 // on the server (/state, see server/state.mjs), so it follows the user across devices. Without a
@@ -16,7 +17,14 @@ export interface Progress {
   authors: string[];
   /** Marked finished by the user (calibre's own "Finished" column is separate). */
   finished?: boolean;
+  /** On the wishlist (to read) since then (ms since the epoch). */
+  wish?: number;
+  /** A favorite since then (ms since the epoch). */
+  fav?: number;
 }
+
+/** The user's two lists: the wishlist (★, books to read) and favorites (♥, books they liked). */
+export type ListKind = "wish" | "fav";
 
 export interface ReaderPrefs {
   theme: "dark" | "sepia" | "light";
@@ -92,7 +100,10 @@ export const stateLoaded: Promise<void> = fetch("/state/me", { redirect: "manual
     account = { user: s.user, profile: s.profile, activity: s.activity ?? {}, downloads: s.downloads ?? { count: 0, recent: [] } };
     remote = true;
     for (const [id, m] of Object.entries(s.books ?? {})) {
-      books.set(Number(id), { id: Number(id), title: m.title ?? "", authors: m.authors ?? [], pct: m.pct ?? 0, at: m.at ?? 0, cfi: m.cfi, finished: m.finished });
+      books.set(Number(id), {
+        id: Number(id), title: m.title ?? "", authors: m.authors ?? [], pct: m.pct ?? 0, at: m.at ?? 0, cfi: m.cfi, finished: m.finished,
+        wish: m.wish, fav: m.fav,
+      });
     }
   })
   .catch(loadLocal);
@@ -109,7 +120,8 @@ function push(id: number, keepalive = false) {
   if (p) {
     const { id: _id, ...body } = p;
     init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
+    // The server merges marks: a list the book was taken off has to be sent as null.
+    init.body = JSON.stringify({ ...body, wish: p.wish ?? null, fav: p.fav ?? null });
   }
   fetch(`/state/books/${id}`, init).catch(() => {});
 }
@@ -155,14 +167,27 @@ export const progress = {
 
   get: (id: number) => books.get(id),
 
-  /** A new position from the reader; keeps the finished flag. */
-  set(p: Omit<Progress, "finished">) {
-    store({ ...p, finished: books.get(p.id)?.finished });
+  /** A new position from the reader; keeps the finished flag and the lists. */
+  set(p: Omit<Progress, "finished" | ListKind>) {
+    const prev = books.get(p.id);
+    store({ ...p, finished: prev?.finished, wish: prev?.wish, fav: prev?.fav });
   },
 
   setFinished(id: number, finished: boolean, meta: { title: string; authors: string[] }) {
     const prev = books.get(id);
     store({ pct: 0, ...prev, id, title: meta.title, authors: meta.authors, at: Date.now(), finished });
+  },
+
+  /** Puts the book on the wishlist or the favorites, or takes it off. Leaves `at` alone (it orders
+   * Continue Reading). */
+  setListed(id: number, list: ListKind, on: boolean, meta: { title: string; authors: string[] }) {
+    const prev = books.get(id);
+    store({ pct: 0, at: 0, ...prev, id, title: meta.title, authors: meta.authors, [list]: on ? Date.now() : undefined });
+  },
+
+  /** Books on the wishlist or the favorites, most recently added first. */
+  listed(list: ListKind): Progress[] {
+    return [...books.values()].filter((p) => p[list]).sort((a, b) => (b[list] ?? 0) - (a[list] ?? 0));
   },
 
   remove(id: number) {

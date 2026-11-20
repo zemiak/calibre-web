@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { api, AUDIOBOOKS, bookPath, CALIBRE_FINISHED, COMICS, MAGAZINES, Q, TEXT_BOOKS, thumbUrl, type Filter } from "../api";
+import { CoverBadges } from "../components/Card";
 import { Img } from "../components/Img";
 import { ErrorState, Spinner } from "../components/States";
 import { useAsync, useDocumentTitle } from "../hooks";
@@ -93,10 +94,12 @@ export function UserPage() {
           <Stat n={s?.unread} label="Unread" to="/unread" />
           <Stat n={s?.reading} label="Reading" to="/" />
           <Stat n={s?.finished} label="Finished" />
+          <Stat n={progress.listed("wish").length} label="Wishlist" to="/wishlist" />
+          <Stat n={progress.listed("fav").length} label="Favorites" to="/favorites" />
           {a && <Stat n={a.downloads.count} label="Downloads" />}
         </div>
         <p className="muted small">
-          Books only: audiobooks, comics and magazines don't count. Finished means marked by you or in calibre's Finished column.
+          Unread and finished count books only: audiobooks, comics and magazines don't count. Finished means marked by you or in calibre's Finished column.
         </p>
       </section>
 
@@ -138,7 +141,10 @@ export function UserPage() {
           <div className="download-list">
             {a.downloads.recent.slice(0, 20).map((d) => (
               <Link key={`${d.id}-${d.at}`} to={bookPath(d.id)} className="download-item">
-                <div className="art poster"><Img src={thumbUrl(d.id, 120, 180)} alt="" fallback={d.title ?? ""} /></div>
+                <div className="art poster">
+                  <Img src={thumbUrl(d.id, 120, 180)} alt="" fallback={d.title ?? ""} />
+                  <CoverBadges id={d.id} />
+                </div>
                 <div>
                   <div className="card-title">{d.title ?? `Book ${d.id}`}</div>
                   <div className="card-sub">{d.fmt.toUpperCase()} · {when(d.at)}</div>
@@ -148,6 +154,13 @@ export function UserPage() {
           </div>
         </section>
       )}
+      <section className="user-section">
+        <h2>About</h2>
+        <div className="about-line">
+          <span>Version <strong>{__APP_VERSION__}</strong></span>
+          <Link to="/history" className="btn">History</Link>
+        </div>
+      </section>
       {(acc.loading && !a) && <Spinner />}
     </div>
   );

@@ -348,6 +348,9 @@ export const AUDIOBOOKS = Q.and(BOOKS_ONLY, Q.or(...AUDIO_FORMATS.map((f) => Q.h
 /** Marked finished in calibre's own "Finished" column. */
 export const CALIBRE_FINISHED = Q.eq("#finished", "true");
 
+/** A book of the loaded library, synchronously (undefined before it loads or when it's gone). */
+export const bookById = (id: number): Book | undefined => byId.get(id);
+
 // ------------------------------------------------------------------ URLs
 
 /** Path segments, each percent-encoded (the folder and file names have spaces, commas, …). */
@@ -453,6 +456,18 @@ export function identifierUrl(kind: string, value: string): string | undefined {
     case "uri": case "url": return value;
     default: return undefined;
   }
+}
+
+/** The book on Goodreads (whose API is closed, so a link is all there is): its page when calibre has
+ * the Goodreads id, Goodreads' ISBN lookup (redirects to the book) when it has an ISBN, else a search
+ * for the title and first author. */
+export function goodreadsUrl(b: Book): { url: string; exact: boolean } {
+  const ids = Object.fromEntries(Object.entries(b.identifiers ?? {}).map(([k, v]) => [k.toLowerCase(), v.trim()]));
+  if (/^\d+/.test(ids.goodreads ?? "")) return { url: `https://www.goodreads.com/book/show/${encodeURIComponent(ids.goodreads)}`, exact: true };
+  const isbn = (ids.isbn ?? "").replace(/[^\dX]/gi, "");
+  if (isbn.length === 10 || isbn.length === 13) return { url: `https://www.goodreads.com/book/isbn/${isbn}`, exact: true };
+  const q = [b.title, b.authors[0]].filter(Boolean).join(" ");
+  return { url: `https://www.goodreads.com/search?q=${encodeURIComponent(q)}`, exact: false };
 }
 
 export function shuffle<T>(xs: T[]): T[] {

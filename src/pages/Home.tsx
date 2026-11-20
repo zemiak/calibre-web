@@ -15,6 +15,8 @@ interface HomeData {
   unread: Book[];
   newest: Book[];
   reading: Book[];
+  wishlist: Book[];
+  favorites: Book[];
   recent: Book[];
   series: CategoryItem[];
   tagShelves: { tag: string; items: Book[] }[];
@@ -36,7 +38,7 @@ async function loadHome(): Promise<HomeData> {
   const notInCalibre = await api.search(Q.and(TEXT_BOOKS, Q.not(CALIBRE_FINISHED)), { num: 100000, sort: "timestamp", order: "desc" })
     .then((r) => r.book_ids);
   const unreadIds = notInCalibre.filter((id) => !progress.get(id)?.finished).slice(0, 30);
-  const [unread, newest, recent, random, tags, seriesCandidates, reading, audiobooks] = await Promise.all([
+  const [unread, newest, recent, random, tags, seriesCandidates, reading, audiobooks, wishlist, favorites] = await Promise.all([
     api.books(unreadIds),
     // New: by publication date, books to read only (no audiobooks either).
     api.list(TEXT_BOOKS, { num: 24, sort: "pubdate", order: "desc" }).then((r) => r.items),
@@ -46,6 +48,8 @@ async function loadHome(): Promise<HomeData> {
     api.category("series", { sort: "popularity", num: 40 }),
     api.books(progress.list().slice(0, 20).map((p) => p.id)),
     api.list(only(Q.has("formats", "mp3")), { num: 24, sort: "timestamp", order: "desc" }).then((r) => r.items),
+    api.books(progress.listed("wish").slice(0, 30).map((p) => p.id)),
+    api.books(progress.listed("fav").slice(0, 30).map((p) => p.id)),
   ]);
   // The hero: random books that have a description; filled up with others if there are too few.
   const withText = random.filter((b) => stripHtml(b.comments).length > 80);
@@ -68,7 +72,7 @@ async function loadHome(): Promise<HomeData> {
       })),
     )
   ).filter((s) => s.items.length >= 4).slice(0, 4);
-  return { featured, unread, newest, reading, recent, series, tagShelves, audiobooks, random: random.slice(0, 24) };
+  return { featured, unread, newest, reading, wishlist, favorites, recent, series, tagShelves, audiobooks, random: random.slice(0, 24) };
 }
 
 const ROTATE_MS = 9000;
@@ -204,6 +208,11 @@ export function Home() {
             })}
           </Shelf>
         )}
+        {data.wishlist.length > 0 && (
+          <Shelf title="Wishlist" more="/wishlist">
+            {data.wishlist.map((b) => <BookCard key={b.application_id} book={b} />)}
+          </Shelf>
+        )}
         <Shelf title="Recently Added" more="/books?sort=timestamp">
           {data.recent.map((b) => <BookCard key={b.application_id} book={b} />)}
         </Shelf>
@@ -218,6 +227,11 @@ export function Home() {
               {items.map((b) => <BookCard key={b.application_id} book={b} />)}
             </Shelf>
           ) : null,
+        )}
+        {data.favorites.length > 0 && (
+          <Shelf title="Favorites" more="/favorites">
+            {data.favorites.map((b) => <BookCard key={b.application_id} book={b} />)}
+          </Shelf>
         )}
         {data.audiobooks.length > 0 && (
           <Shelf title="Audiobooks" more="/books?format=mp3&sort=timestamp">

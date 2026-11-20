@@ -8,11 +8,13 @@ import { Detail } from "./pages/Detail";
 import { Home } from "./pages/Home";
 import { AuthorPage, Comics, Library, Magazines, NewBooks, SeriesPage, TagPage } from "./pages/Library";
 import { Search } from "./pages/Search";
-import { Unread } from "./pages/Unread";
+import { Favorites, Unread, Wishlist } from "./pages/Unread";
 import { UserPage } from "./pages/User";
 
 // epub.js (and jszip) are only needed to read a book: loaded when the reader opens.
 const Reader = lazy(() => import("./pages/Reader").then((m) => ({ default: m.Reader })));
+// HISTORY.md's text is in the History page's chunk: loaded only when it's opened.
+const History = lazy(() => import("./pages/History").then((m) => ({ default: m.History })));
 
 export function App() {
   const loc = useLocation();
@@ -29,7 +31,10 @@ export function App() {
           <Route path="/" element={<Home />} />
           <Route path="/books" element={<Library />} />
           <Route path="/unread" element={<Unread />} />
+          <Route path="/wishlist" element={<Wishlist />} />
+          <Route path="/favorites" element={<Favorites />} />
           <Route path="/me" element={<UserPage />} />
+          <Route path="/history" element={<Suspense fallback={<Spinner />}><History /></Suspense>} />
           <Route path="/new" element={<NewBooks />} />
           <Route path="/comics" element={<Comics />} />
           <Route path="/magazines" element={<Magazines />} />

@@ -1,4 +1,4 @@
-// Per-user state: reading positions and finished marks, the user's profile from the sign-in
+// Per-user state: reading positions, finished marks, the wishlist and favorites, the user's profile from the sign-in
 // (SSO), their sessions ("logins") and downloads. One JSON file per user under STATE_DIR.
 //
 // The user is whoever the sign-in proxy says: oauth2-proxy sets X-Forwarded-Email on every
@@ -26,7 +26,8 @@ const RECENT_DOWNLOADS = 50;
 const fileOf = (email) => join(DIR, createHash("sha256").update(email.toLowerCase()).digest("hex") + ".json");
 
 /**
- * @typedef {{ cfi?: string, pct?: number, at?: number, title?: string, authors?: string[], finished?: boolean }} Mark
+ * @typedef {{ cfi?: string, pct?: number, at?: number, title?: string, authors?: string[], finished?: boolean, wish?: number, fav?: number }} Mark
+ * (wish and fav: when the book went on the wishlist or the favorites; absent when it isn't on them)
  * @typedef {{ name?: string, givenName?: string, familyName?: string, picture?: string, locale?: string, domain?: string, emailVerified?: boolean, subject?: string, issuer?: string, user?: string, preferredUsername?: string, groups?: string[] }} Profile
  * @typedef {{ firstSeen?: number, lastSeen?: number, sessionStart?: number, previousSession?: number, sessions?: number }} Activity
  * @typedef {{ id: number, fmt: string, at: number, title?: string }} Download
@@ -148,6 +149,11 @@ function clean(body) {
   if (typeof body.title === "string") m.title = body.title.slice(0, 500);
   if (Array.isArray(body.authors)) m.authors = body.authors.filter((a) => typeof a === "string").slice(0, 20);
   if (typeof body.finished === "boolean") m.finished = body.finished;
+  // Wishlist and favorites: a time puts the book on the list, null (or false) takes it off.
+  for (const k of ["wish", "fav"]) {
+    if (body[k] === null || body[k] === false) m[k] = null;
+    else if (typeof body[k] === "number" && isFinite(body[k])) m[k] = body[k];
+  }
   return m;
 }
 
@@ -226,7 +232,9 @@ const server = createServer(async (req, res) => {
       if (req.method === "PUT") {
         const mark = clean(await readBody(req));
         if (!mark) return send(res, 400, { error: "a JSON object is expected" });
-        state.books[id] = { ...state.books[id], ...mark };
+        const merged = { ...state.books[id], ...mark };
+        for (const k of ["wish", "fav"]) if (merged[k] === null) delete merged[k];
+        state.books[id] = merged;
         await save(state);
         return send(res, 200, state.books[id]);
       }

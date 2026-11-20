@@ -36,6 +36,8 @@ export function NavBar() {
       <div className="nav-links">
         <NavLink to="/" end>Home</NavLink>
         <NavLink to="/books">Library</NavLink>
+        <NavLink to="/wishlist">Wishlist</NavLink>
+        <NavLink to="/favorites">Favorites</NavLink>
         <NavLink to="/comics">Comics</NavLink>
         <NavLink to="/magazines">Magazines</NavLink>
         <NavLink to="/authors">Authors</NavLink>

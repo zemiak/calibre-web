@@ -12,15 +12,22 @@ inline EPUB reader.
 - **Authors**, **Series**, **Tags**: browse pages. Authors are grouped by letter, series show a stack of
   their first covers, tags are a cloud sized by book count.
 - **Book pages**: cover, authors, series, tags, rating, description, *Read* (EPUB), *Open PDF* (in the
-  browser), an audio player for MP3 audiobooks, downloads of every format, *More in this series*,
+  browser), an audio player for MP3 audiobooks, a *Goodreads* link (the book's page by its Goodreads id
+  or ISBN, else a search by title and author; Goodreads has no public API any more), downloads of every format, *More in this series*,
   *More by the author* and the metadata (identifiers link to Open Library, Amazon, Goodreads, …;
   custom columns such as *Finished* are shown too).
 - **Reader**: EPUBs open inline ([epub.js](https://github.com/futurepress/epub.js)), paginated, with a
   table of contents, a progress slider, three themes (dark, sepia, light) and adjustable text size.
-- **Reading marks**: the position in each book and a *Finished* toggle on the book page (shown as a tick
-  on covers, next to calibre's own *Finished* column). Behind the sign-in proxy they belong
+- **Reading marks**: the position in each book and a *Finished* toggle on the book page (unfinished books
+  get an unread dot on their covers; calibre's own *Finished* column counts too). Behind the sign-in proxy they belong
   to the signed-in user and are kept on the server, so they follow the user across devices; without
   a sign-in they stay in the browser. They feed *Continue Reading* on the home page.
+- **Wishlist and favorites**: a star (books to read) and a heart (books you liked) on the book page,
+  kept with the reading marks. Each list has its own page (nav bar) and a shelf on the home page.
+  Every cover shows the book's marks in its corner: ★ wishlist, ♥ favorite, ● unread (not marked
+  finished by you or in calibre), ♪ audiobook.
+- **Account**: the signed-in user, sessions, reading statistics, recent downloads, and the app's
+  version (`package.json`) with a link to its history (`HISTORY.md`, bundled into the /history page).
 - **Search**: every word must appear in the title, authors, series, tags, description or publisher
   (calibre's own search language does the matching), plus the authors, series and tags whose names
   match. With an empty search box: a tag cloud.
