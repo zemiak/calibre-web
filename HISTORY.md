@@ -3,6 +3,13 @@
 What changed in each version, newest first. The version is in `package.json`; the account page
 shows it and links to this page. Versions before 1.3.0 were numbered afterwards.
 
+## 2026-11-21 — 1.3.3: Bigger nav icons on phones
+
+- Nav bar order: Wishlist and Favorites first, then Library and the rest.
+- On a phone the nav icons are the size of the search button, in one row that scrolls sideways
+  when they don't fit. The bar is solid there and the home page starts below it, so the banner
+  cover no longer runs under the icons.
+
 ## 2026-11-20 — 1.3.2: Icon nav bar on phones
 
 - On a phone the nav bar shows icons instead of names (the names are tooltips), and the Home link

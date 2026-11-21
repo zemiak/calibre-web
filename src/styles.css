@@ -118,17 +118,24 @@ main.with-nav { padding-bottom: 64px; }
 .download-item > div:last-child { min-width: 0; }
 .download-item .card-title { margin-top: 0; }
 
+/* Phones: the nav links are icons the size of the search button, in a strip between the brand and
+ * the search box that scrolls sideways when they don't fit. The bar is solid and the home page
+ * starts below it, so the banner cover doesn't run under the icons. */
 @media (max-width: 720px) {
-  .navbar { gap: 4px; }
+  .navbar {
+    gap: 10px; background: var(--glass); border-bottom-color: var(--line);
+    backdrop-filter: saturate(180%) blur(22px); -webkit-backdrop-filter: saturate(180%) blur(22px);
+  }
   .brand span { display: none; }
-  .nav-links { gap: 0; }
-  .nav-links a { padding: 5px; }
+  .nav-links { gap: 4px; min-width: 0; align-self: stretch; align-items: center; }
+  .nav-links a { flex: none; width: 36px; height: 36px; padding: 0; justify-content: center; }
   .nav-links a.nav-home, .nav-links a span { display: none; }
-  .nav-links a svg { display: block; width: 19px; height: 19px; }
-  .navbar > .search-box { width: 34px; height: 34px; padding: 0 9px; transition: width .2s; }
+  .nav-links a svg { display: block; }
+  .navbar > .search-box { flex: none; width: 36px; height: 36px; padding: 0 10px; transition: width .2s; }
   .navbar > .search-box:focus-within { width: 60vw; }
   .navbar > .search-box input { width: 0; }
   .navbar > .search-box:focus-within input { width: auto; }
+  .home { padding-top: calc(var(--nav-h) + env(safe-area-inset-top, 0px)); }
 }
 
 /* ------------------------------------------------------------------ buttons & controls */
