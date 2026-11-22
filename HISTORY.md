@@ -3,6 +3,11 @@
 What changed in each version, newest first. The version is in `package.json`; the account page
 shows it and links to this page. Versions before 1.3.0 were numbered afterwards.
 
+## 2026-11-22 — 1.3.4: Goodreads by title and author
+
+- The Goodreads button on the book page always searches for the title and first author; it no
+  longer uses the book's ISBN or Goodreads id.
+
 ## 2026-11-21 — 1.3.3: Bigger nav icons on phones
 
 - Nav bar order: Wishlist and Favorites first, then Library and the rest.

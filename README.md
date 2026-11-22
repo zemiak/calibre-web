@@ -12,8 +12,8 @@ inline EPUB reader.
 - **Authors**, **Series**, **Tags**: browse pages. Authors are grouped by letter, series show a stack of
   their first covers, tags are a cloud sized by book count.
 - **Book pages**: cover, authors, series, tags, rating, description, *Read* (EPUB), *Open PDF* (in the
-  browser), an audio player for MP3 audiobooks, a *Goodreads* link (the book's page by its Goodreads id
-  or ISBN, else a search by title and author; Goodreads has no public API any more), downloads of every format, *More in this series*,
+  browser), an audio player for MP3 audiobooks, a *Goodreads* link (a search by title and author, never
+  by ISBN or id; Goodreads has no public API any more), downloads of every format, *More in this series*,
   *More by the author* and the metadata (identifiers link to Open Library, Amazon, Goodreads, …;
   custom columns such as *Finished* are shown too).
 - **Reader**: EPUBs open inline ([epub.js](https://github.com/futurepress/epub.js)), paginated, with a

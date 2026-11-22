@@ -458,16 +458,11 @@ export function identifierUrl(kind: string, value: string): string | undefined {
   }
 }
 
-/** The book on Goodreads (whose API is closed, so a link is all there is): its page when calibre has
- * the Goodreads id, Goodreads' ISBN lookup (redirects to the book) when it has an ISBN, else a search
- * for the title and first author. */
-export function goodreadsUrl(b: Book): { url: string; exact: boolean } {
-  const ids = Object.fromEntries(Object.entries(b.identifiers ?? {}).map(([k, v]) => [k.toLowerCase(), v.trim()]));
-  if (/^\d+/.test(ids.goodreads ?? "")) return { url: `https://www.goodreads.com/book/show/${encodeURIComponent(ids.goodreads)}`, exact: true };
-  const isbn = (ids.isbn ?? "").replace(/[^\dX]/gi, "");
-  if (isbn.length === 10 || isbn.length === 13) return { url: `https://www.goodreads.com/book/isbn/${isbn}`, exact: true };
+/** A Goodreads search for the book's title and first author (Goodreads' API is closed, so a link is
+ * all there is). Never by ISBN or Goodreads id. */
+export function goodreadsUrl(b: Book): string {
   const q = [b.title, b.authors[0]].filter(Boolean).join(" ");
-  return { url: `https://www.goodreads.com/search?q=${encodeURIComponent(q)}`, exact: false };
+  return `https://www.goodreads.com/search?q=${encodeURIComponent(q)}`;
 }
 
 export function shuffle<T>(xs: T[]): T[] {

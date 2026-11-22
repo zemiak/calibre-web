@@ -49,7 +49,6 @@ function Header({ b }: { b: Book }) {
   const p = mark;
   const done = isFinished(b) || mark?.finished;
   const meta = { title: b.title, authors: b.authors };
-  const gr = goodreadsUrl(b);
   const toggleFinished = () => {
     progress.setFinished(id, !mark?.finished, meta);
     setMark(progress.get(id));
@@ -123,8 +122,7 @@ function Header({ b }: { b: Book }) {
           {hasFormat(b, "pdf") && (
             <a className="btn" href={fileUrl(id, "pdf", true)} target="_blank" rel="noreferrer">Open PDF</a>
           )}
-          <a className="btn" href={gr.url} target="_blank" rel="noreferrer"
-            title={gr.exact ? "This book on Goodreads" : "Search for this book on Goodreads"}>
+          <a className="btn" href={goodreadsUrl(b)} target="_blank" rel="noreferrer" title="Search for this book on Goodreads">
             Goodreads
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3ZM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" /></svg>
           </a>
