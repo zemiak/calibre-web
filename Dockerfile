@@ -9,7 +9,7 @@ RUN npm run build
 # Runtime: nginx serves dist/, covers and book files from the library folder ($LIBRARY_DIR), and
 # proxies /state/ to the state service. The same image runs that service in a second container:
 #   node /srv/state/state.mjs   (LIBRARY_DIR: the calibre library; STATE_DIR: per-user files)
-FROM nginx:1.28-alpine AS runtime
+FROM nginx:1.29-alpine AS runtime
 RUN apk add --no-cache nodejs \
  && sed -i '1i load_module modules/ngx_http_image_filter_module.so;' /etc/nginx/nginx.conf
 ENV LIBRARY_DIR=/library \
